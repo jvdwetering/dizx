@@ -1,6 +1,6 @@
 # DiZX - Python library for quantum circuit rewriting
 #        and optimisation using the qudit ZX-calculus
-# Copyright (C) 2023 - Boldiszar Poor, Lia Yeh and John van de Wetering
+# Copyright (C) 2023 - Boldizsar Poor, Lia Yeh and John van de Wetering
 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.

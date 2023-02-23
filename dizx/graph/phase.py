@@ -58,6 +58,10 @@ class Phase(abc.ABC):
     def is_pure_clifford(self) -> bool:
         pass
 
+    @abc.abstractmethod
+    def is_zero(self) -> bool:
+        pass
+
 
 class CliffordPhase(Phase):
 
@@ -109,3 +113,6 @@ class CliffordPhase(Phase):
 
     def is_pure_clifford(self) -> bool:
         return self.x == 0
+
+    def is_zero(self) -> bool:
+        return self.x == 0 and self.y == 0
