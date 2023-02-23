@@ -61,3 +61,5 @@ class Settings(object): # namespace class
     tikz_classes: Dict[str,str] = tikz_classes
 
 settings = Settings()
+
+settings.javascript_location = os.path.join(os.path.dirname(__file__), 'js')

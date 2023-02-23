@@ -18,23 +18,21 @@ __all__ = ['draw']
 
 import os
 import math
-import cmath
 import json
 import string
 import random
-from fractions import Fraction
-from typing import Dict, List, Tuple, Optional, Union, Iterable, Any, TYPE_CHECKING
+from typing import Dict, List, Tuple, Optional, Iterable, Any
 from typing_extensions import Literal
-import numpy as np
 
+from IPython.display import display, HTML
 
-from .utils import settings, phase_to_s, EdgeType, VertexType, FloatInt
+from .utils import settings, VertexType, FloatInt
 from .graph.base import BaseGraph, VT, ET
-from .circuit import Circuit
+from .graph import Edge
 
 
-def draw(g: Union[BaseGraph[VT,ET], Circuit], labels: bool=False, **kwargs) -> Any:
-    """Draws the given Circuit or Graph. 
+def draw(g: BaseGraph[VT,ET], labels: bool=False, **kwargs) -> Any:
+    """Draws the given Graph. 
     Depending on the value of ``pyzx.settings.drawing_backend``
     either uses matplotlib or d3 to draw."""
 
@@ -51,7 +49,7 @@ def draw(g: Union[BaseGraph[VT,ET], Circuit], labels: bool=False, **kwargs) -> A
 
 
 def draw_matplotlib(
-        g:      Union[BaseGraph[VT,ET], Circuit], 
+        g:      BaseGraph[VT,ET], 
         labels: bool                             =False, 
         figsize:Tuple[FloatInt,FloatInt]         =(8,2), 
         h_edge_draw: Literal['blue', 'box']      ='blue', 
@@ -61,8 +59,6 @@ def draw_matplotlib(
     if plt is None:
         raise ImportError("This function requires matplotlib to be installed. "
             "If you are running in a Jupyter notebook, you can instead use `zx.draw_d3`.")
-    if isinstance(g, Circuit):
-        g = g.to_graph(zh=True)
     fig1 = plt.figure(figsize=figsize)
     ax = fig1.add_axes([0, 0, 1, 1], frameon=False)
     ax.xaxis.set_visible(False)
@@ -163,14 +159,11 @@ random_graphid = random.Random()
 #     display(HTML(library_code))
 
 def draw_d3(
-    g: Union[BaseGraph[VT,ET], Circuit],
+    g: BaseGraph[VT,ET],
     labels:bool=False, 
     scale:Optional[FloatInt]=None
     ) -> Any:
-
-    if isinstance(g, Circuit):
-        g = g.to_graph()
-
+    
     # tracking global sequence can cause clashes if you restart the kernel without clearing ouput, so
     # use an 8-digit random alphanum instead.
     graph_id = ''.join(random_graphid.choice(string.ascii_letters + string.digits) for _ in range(8))
@@ -199,15 +192,16 @@ def draw_d3(
               }
              for v in g.vertices()]
 
+    links = []
     for e in g.edges():
         s,t = g.edge_st(e)
-        name = "{}, {}" % (s,t)
+        name = "{}, {}".format(str(s),str(t))
         eo = g.edge_object(e)
         phase = str(int(eo))
-        t = 3 if eo.type() == Edge.HadEdge else 4
-        x = (0.5*(g.row(s) + g.row(t)) + 1) * scale
-        y = (0.5*(g.qubit(s) + g.qubit(t)) + 1) * scale
-        nodes.append({'name': name, 'x': x, 'y': y, 't': t, 'phase': phase})
+        ty = 3 if eo.type() == Edge.HadEdge else 4
+        x = (0.5*(g.row(s) + g.row(t))-minrow + 1) * scale
+        y = (0.5*(g.qubit(s) + g.qubit(t))-minqub + 2) * scale
+        nodes.append({'name': name, 'x': x, 'y': y, 't': ty, 'phase': phase})
         links.append({'source':str(s), 'target': name, 't':1})
         links.append({'source':name, 'target': str(t), 't':1})
     # links = [{'source': str(g.edge_s(e)),

@@ -20,7 +20,7 @@ function nodeColor(t) {
     else if (t == 1) return "#ccffcc";
     else if (t == 2) return "#ff8888";
     else if (t == 3) return "yellow";
-    else if (t == 4) return "#888888";
+    else if (t == 4) return "#555555";
 }
 
 function edgeColor(t) {
@@ -109,7 +109,8 @@ function showGraph(tag, graph, width, height, scale, node_size, show_labels) {
         .attr("width", node_size * 1.5).attr("height", node_size * 1.5)
         .attr("fill", function(d) { return nodeColor(d.t); })
         .attr("stroke", "black")
-        .attr("class", "selectable");
+        .attr('style', 'pointer-events: none; user-select: none;');
+        // .attr("class", "selectable");
 
     node.filter(function(d) { return d.phase != ''; })
         .append("text")
@@ -134,31 +135,32 @@ function showGraph(tag, graph, width, height, scale, node_size, show_labels) {
 
     function update_hboxes() {
         if (auto_hbox) {
-            var pos = {};
+            // var pos = {};
             hbox.attr("transform", function(d) {
                 // calculate barycenter of non-hbox neighbours, then nudge a bit
                 // to the NE.
                 var x=0,y=0,sz=0;
                 for (var i = 0; i < d.nhd.length; ++i) {
-                    if (d.nhd[i].t != 3) {
+                    if (d.nhd[i].t != 3 && d.nhd[i].t != 4) {
                         sz++;
                         x += d.nhd[i].x;
                         y += d.nhd[i].y;
                     }
                 }
 
-                offset = 0.25 * scale;
+                // var offset = 0.25 * scale;
+                var offset = 0;
 
                 if (sz != 0) {
                     x = (x/sz) + offset;
                     y = (y/sz) - offset;
 
-                    while (pos[[x,y]]) {
-                        x += offset;
-                    }
+                    // while (pos[[x,y]]) {
+                    //     x += offset;
+                    // }
                     d.x = x;
                     d.y = y;
-                    pos[[x,y]] = true;
+                    // pos[[x,y]] = true;
                 }
 
                 return "translate("+d.x+","+d.y+")";
@@ -199,12 +201,12 @@ function showGraph(tag, graph, width, height, scale, node_size, show_labels) {
             update_hboxes();
 
             link.filter(function(d) { return d.source.selected ||
-                    (auto_hbox && d.source.t == 3); })
+                    (auto_hbox && (d.source.t == 3 || d.source.t == 4)); })
                 .attr("x1", function(d) { return d.source.x; })
                 .attr("y1", function(d) { return d.source.y; });
 
             link.filter(function(d) { return d.target.selected ||
-                    (auto_hbox && d.target.t == 3); })
+                    (auto_hbox && (d.target.t == 3 || d.target.t == 4)); })
                 .attr("x2", function(d) { return d.target.x; })
                 .attr("y2", function(d) { return d.target.y; });
 
