@@ -59,6 +59,7 @@ class Settings(object): # namespace class
     tikzit_location: str = "" # Path to tikzit executable
     show_labels: bool = False
     tikz_classes: Dict[str,str] = tikz_classes
+    dim: int = 3
 
 settings = Settings()
 

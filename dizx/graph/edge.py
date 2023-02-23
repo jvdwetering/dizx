@@ -22,10 +22,9 @@ class Edge(object):
     SimpleEdge = 1
     HadEdge = 2
 
-    def __init__(self, dim, had=0, simple=0):
-        self.dim = dim
-        self._had = had % self.dim
-        self._simple = simple % self.dim
+    def __init__(self, had=0, simple=0):
+        self._had = had
+        self._simple = simple
 
     @property
     def had(self) -> int:
@@ -53,11 +52,13 @@ class Edge(object):
                 "This edge is not in reduced form, so it doesn't have a definitive type")
         return Edge.SimpleEdge if self.had == 0 else Edge.HadEdge
 
+    def is_single(self) -> bool:
+        return int(self) == 1
+
     def to_tuple(self):
         return self.had, self.simple
 
     def __add__(self, edge2):
-        assert (self.dim == edge2.dim)
         return Edge(self.dim, self.had + edge2.had,
                     self.simple + edge2.simple)
 
@@ -69,3 +70,7 @@ class Edge(object):
 
     def __str__(self):
         return f"Edge(h={self.had},s={self.simple})"
+
+    def __repr__(self):
+        return str(self)
+
