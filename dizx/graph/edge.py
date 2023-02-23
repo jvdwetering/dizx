@@ -17,6 +17,9 @@
 """This file contains the Edge class used to represent the edges between two nodes in a Graph."""
 
 class Edge(object):
+    SimpleEdge = 1
+    HadEdge = 2
+
     def __init__(self,dim,had=0,simple=0):
         self.dim = dim
         self.had = had % self.dim
@@ -31,6 +34,18 @@ class Edge(object):
     def is_simple_edge(self) -> bool:
         return True if (self.isEdgePresent() and self._numH == 0) else False
 
+    def is_reduced(self) -> bool:
+        return self.had == 0 or self.simple == 0
+
+    def type(self) -> bool:
+        if not self.is_reduced():
+            raise ValueError("This edge is not in reduced form, so it doesn't have a definitive type")
+        return Edge.SimpleEdge if self.had == 0 else Edge.HadEdge
+
+    def to_tuple(self):
+        return (self.had, self.simple)
+
+
     def __add__(edge1, edge2):
         assert(edge1.dim == edge2.dim)
         return Edge(edge1.dim, edge1.had + edge2.had, edge1.simple + edge2.simple)
@@ -38,5 +53,9 @@ class Edge(object):
     def __bool__(self):
         return self.isEdgePresent()
 
+    def __int__(self):
+        return self.had + self.simple
+
     def __str__(self):
         return "Edge(h={},s={})" % (self.had, self.simple)
+
