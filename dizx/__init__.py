@@ -19,7 +19,7 @@ __version__ = "0.0.1"
 from .graph import Graph, Edge, Phase, CliffordPhase
 from .utils import VertexType, toggle_vertex, settings
 from .drawing import draw
-
+from .circuit import Circuit, gates, id
 
 if __name__ == '__main__':
     print("Please execute this as a module by running 'python -m dizx'")
