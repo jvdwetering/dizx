@@ -52,7 +52,7 @@ class Edge(object):
                 "This edge is not in reduced form, so it doesn't have a definitive type")
         return Edge.SimpleEdge if self.had == 0 else Edge.HadEdge
 
-    def is_single(self): -> bool:
+    def is_single(self) -> bool:
         return int(self) == 1
 
     def to_tuple(self):
@@ -70,3 +70,7 @@ class Edge(object):
 
     def __str__(self):
         return f"Edge(h={self.had},s={self.simple})"
+
+    def __repr__(self):
+        return str(self)
+

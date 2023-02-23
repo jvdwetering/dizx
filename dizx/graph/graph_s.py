@@ -115,7 +115,7 @@ class GraphS(BaseGraph[int,Tuple[int,int]]):
 
     def add_edge(self, e:Tuple[int,int], eo: Edge):
         v1,v2 = e
-        t1,t2 = g.type(v1), g.type(v2)
+        t1,t2 = self.type(v1), self.type(v2)
         old = self.edge_object(e)
         if t1 == VertexType.BOUNDARY or t2 == VertexType.BOUNDARY:
             if old:  # There was already an edge present
@@ -129,7 +129,7 @@ class GraphS(BaseGraph[int,Tuple[int,int]]):
         if t1 == t2 and t1 == VertexType.Z:  # Both spiders are Z-spiders
             if eo.simple != 0 or old.simple != 0: # We have some amount of simple edges, so the spiders 'fuse' and we can get rid of any H-edges
                 h = (old.had + eo.had) % self.dim
-                self.add_to_phase(v1,CliffordPhase(self.dim,0,2*eo.had)) # magic
+                self.add_to_phase(v1,CliffordPhase(self.dim,x=0,y=2*h)) # magic
                 # else: # It is an X spider
                 #     self.add_to_phase(v1,CliffordPhase(self.dim,0,pow(-2*eo.had,-1,self.dim))) # more magic
                 new = Edge(had=0, simple = 1)
