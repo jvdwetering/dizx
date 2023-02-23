@@ -106,11 +106,98 @@ class GraphS(BaseGraph[int,Tuple[int,int]]):
         return range(self._vindex - amount, self._vindex)
 
 
-    def add_edges(self, edges:List[Tuple[int,int]],edgetype: Edge):
-        for s,t in edges:
+    def add_edges(self, edges:List[Tuple[int,int]],eo: Edge):
+        for e in edges:
+            # self.nedges += 1
+            # self.graph[s][t] = edgetype
+            # self.graph[t][s] = edgetype
+            self.add_edge(e,eo)
+
+    def add_edge(self, e:Tuple[int,int], eo: Edge):
+        v1,v2 = e
+        t1,t2 = g.type(v1), g.type(v2)
+        old = self.edge_object(e)
+        if t1 == VertexType.BOUNDARY or t2 == VertexType.BOUNDARY:
+            if old:  # There was already an edge present
+                raise ValueError("Trying to add an edge to a boundary while there is already an edge present")
+            if not eo.is_single():
+                raise ValueError("Can't add compound edge to boundary vertex")
+            self.graph[v1][v2] = eo
+            self.graph[v2][v1] = eo
             self.nedges += 1
-            self.graph[s][t] = edgetype
-            self.graph[t][s] = edgetype
+            return
+        if t1 == t2 and t1 == VertexType.Z:  # Both spiders are Z-spiders
+            if eo.simple != 0 or old.simple != 0: # We have some amount of simple edges, so the spiders 'fuse' and we can get rid of any H-edges
+                h = (old.had + eo.had) % self.dim
+                self.add_to_phase(v1,CliffordPhase(self.dim,0,2*eo.had)) # magic
+                # else: # It is an X spider
+                #     self.add_to_phase(v1,CliffordPhase(self.dim,0,pow(-2*eo.had,-1,self.dim))) # more magic
+                new = Edge(had=0, simple = 1)
+                self.graph[v1][v2] = new
+                self.graph[v2][v1] = new
+                if not old: self.nedges += 1  # We have added a new edge
+                return
+
+            # no simple edges, so only H-edges
+            h = (eo.had + old.had) % self.dim
+            if h == 0: 
+                if old:  # There was an old edge, but no longer
+                    self.remove_edge(e)
+                return  # No edge to add
+            new = Edge(had=h,simple=0)
+            self.graph[v1][v2] = new
+            self.graph[v2][v1] = new
+            if not old: self.nedges += 1  # We have added a new edge
+            return
+
+        if t1 == VertexType.X and t2 == VertexType.X:  # Both X-spiders
+            if not eo.is_reduced():
+                raise ValueError("Complicated edge types are currently not supported for X-spiders")
+            if eo.is_had_edge():
+                if old and old.is_simple_edge():
+                    raise ValueError("Adding H-edge to regular edge between X-spider: complicated edge types are currently not supported for X-spiders")
+                h = (eo.had + old.had) % self.dim
+                if h == 0: 
+                    if old:  # There was an old edge, but no longer
+                        self.remove_edge(e)
+                    return  # No edge to add
+                new = Edge(had=h,simple=0)
+                self.graph[v1][v2] = new
+                self.graph[v2][v1] = new
+                if not old: self.nedges += 1  # We have added a new edge
+            else:  # eo is a simple edge
+                if old and old.is_had_edge():
+                    raise ValueError("Adding H-edge to regular edge between X-spider: complicated edge types are currently not supported for X-spiders")
+                new = Edge(had=0,simple=1)  # Simple edges collapse to a single edge for X-X connections
+                self.graph[v1][v2] = new
+                self.graph[v2][v1] = new
+                if not old: self.nedges += 1  # We have added a new edge
+                return
+
+        # We now know that one of them must be a Z spider and the other an X spider
+        # This means that regular edges go modulo d, while Hadamard edges are collapsed to 1
+        if not eo.is_reduced():
+            raise ValueError("Complicated edge types are currently not supported for connections between Z- and X-spiders")
+        if eo.is_simple_edge():
+            if old and old.is_hadamard_edge():
+                raise ValueError("Adding simple edge to regular edge between Z- and X-spider: complicated edge types are currently not supported")
+            s = (eo.simple + old.simple) % self.dim
+            if s == 0: 
+                if old:  # There was an old edge, but no longer
+                    self.remove_edge(e)
+                return  # No edge to add
+            new = Edge(had=0,simple=s)
+            self.graph[v1][v2] = new
+            self.graph[v2][v1] = new
+            if not old: self.nedges += 1  # We have added a new edge
+        else:  # eo is an H-edge
+            if old and old.is_simple_edge():
+                raise ValueError("Adding H-edge to regular edge between Z- and X-spider: complicated edge types are currently not supported")
+            new = Edge(had=1,simple=0)  # H-edges collapse to a single edge for Z-X connections
+            self.graph[v1][v2] = new
+            self.graph[v2][v1] = new
+            if not old: self.nedges += 1  # We have added a new edge
+            return
 
     def remove_vertices(self, vertices):
         for v in vertices:
@@ -190,7 +277,7 @@ class GraphS(BaseGraph[int,Tuple[int,int]]):
         try:
             return self.graph[v1][v2]
         except KeyError:
-            return 0
+            return Edge(0,0)
 
     def set_edge_object(self, e, t):
         v1,v2 = e
