@@ -57,8 +57,6 @@ class Settings(object): # namespace class
     javascript_location: str = "" # Path to javascript files of pyzx
     d3_load_string: str = ""
     tikzit_location: str = "" # Path to tikzit executable
-    quantomatic_location: str = "" # Path to quantomatic executable
-    topt_command: Optional[List[str]] = None # Argument-separated command to run TOpt such as ["wsl", "./TOpt"]
     show_labels: bool = False
     tikz_classes: Dict[str,str] = tikz_classes
 

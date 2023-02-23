@@ -17,6 +17,7 @@
 __version__ = "0.0.1"
 
 from .graph import Graph, Edge, Phase
+from .utils import VertexType, toggle_vertex, settings
 
 
 if __name__ == '__main__':
