@@ -14,12 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from fractions import Fraction
-from typing import Tuple, Dict, Set, Any
-
 from .base import BaseGraph
 
 from ..utils import VertexType, EdgeType, FractionLike, FloatInt
+
+from .edge import Edge
+from .phase import Phase
 
 class GraphS(BaseGraph[int,Tuple[int,int]]):
     """Purely Pythonic implementation of :class:`~graph.base.BaseGraph`."""
@@ -27,20 +27,18 @@ class GraphS(BaseGraph[int,Tuple[int,int]]):
 
     #The documentation of what these methods do 
     #can be found in base.BaseGraph
-    def __init__(self) -> None:
-        BaseGraph.__init__(self)
-        self.graph: Dict[int,Dict[int,EdgeType.Type]]   = dict()
+    def __init__(self, dim) -> None:
+        BaseGraph.__init__(self,dim)
+        self.graph: Dict[int,Dict[int,Edge]]            = dict()
         self._vindex: int                               = 0
         self.nedges: int                                = 0
         self.ty: Dict[int,VertexType.Type]              = dict()
-        self._phase: Dict[int, FractionLike]            = dict()
+        self._phase: Dict[int, Phase]                   = dict()
         self._qindex: Dict[int, FloatInt]               = dict()
         self._maxq: FloatInt                            = -1
         self._rindex: Dict[int, FloatInt]               = dict()
         self._maxr: FloatInt                            = -1
-        self._grounds: Set[int] = set()
 
-        self._vdata: Dict[int,Any]                      = dict()
         self._inputs: Tuple[int, ...]                   = tuple()
         self._outputs: Tuple[int, ...]                  = tuple()
         
@@ -99,25 +97,17 @@ class GraphS(BaseGraph[int,Tuple[int,int]]):
         for i in range(self._vindex, self._vindex + amount):
             self.graph[i] = dict()
             self.ty[i] = VertexType.BOUNDARY
-            self._phase[i] = 0
+            self._phase[i] = Phase(self.dim)
         self._vindex += amount
         return range(self._vindex - amount, self._vindex)
-    def add_vertex_indexed(self, index):
-        """Adds a vertex that is guaranteed to have the chosen index (i.e. 'name').
-        If the index isn't available, raises a ValueError.
-        This method is used in the editor to support undo, which requires vertices
-        to preserve their index."""
-        if index in self.graph: raise ValueError("Vertex with this index already exists")
-        if index >= self._vindex: self._vindex = index+1
-        self.graph[index] = dict()
-        self.ty[index] = VertexType.BOUNDARY
-        self._phase[index] = 0
 
-    def add_edges(self, edges, edgetype=EdgeType.SIMPLE, smart=False):
-        for s,t in edges:
+
+    def add_edges(self, edges:List[Tuple[int,int,int,int]]):
+        for s,t,reg,had in edges:
+            e = Edge(self.dim,reg,had)
             self.nedges += 1
-            self.graph[s][t] = edgetype
-            self.graph[t][s] = edgetype
+            self.graph[s][t] = e
+            self.graph[t][s] = e
 
     def remove_vertices(self, vertices):
         for v in vertices:
@@ -141,8 +131,6 @@ class GraphS(BaseGraph[int,Tuple[int,int]]):
             except: pass
             try: del self.phase_index[v]
             except: pass
-            self._grounds.discard(v)
-            self._vdata.pop(v,None)
         self._vindex = max(self.vertices(),default=0) + 1
 
     def remove_vertex(self, vertex):
@@ -167,45 +155,18 @@ class GraphS(BaseGraph[int,Tuple[int,int]]):
     def vertices(self):
         return self.graph.keys()
 
-    def vertices_in_range(self, start, end):
-        """Returns all vertices with index between start and end
-        that only have neighbours whose indices are between start and end"""
-        for v in self.graph.keys():
-            if not start<v<end: continue
-            if all(start<v2<end for v2 in self.graph[v]):
-                yield v
 
     def edges(self):
         for v0,adj in self.graph.items():
             for v1 in adj:
                 if v1 > v0: yield (v0,v1)
 
-    def edges_in_range(self, start, end, safe=False):
-        """like self.edges, but only returns edges that belong to vertices 
-        that are only directly connected to other vertices with 
-        index between start and end.
-        If safe=True then it also checks that every neighbour is only connected to vertices with the right index"""
-        if not safe:
-            for v0,adj in self.graph.items():
-                if not (start<v0<end): continue
-                #verify that all neighbours are in range
-                if all(start<v1<end for v1 in adj):
-                    for v1 in adj:
-                        if v1 > v0: yield (v0,v1)
-        else:
-            for v0,adj in self.graph.items():
-                if not (start<v0<end): continue
-                #verify that all neighbours are in range, and that each neighbour
-                # is only connected to vertices that are also in range
-                if all(start<v1<end for v1 in adj) and all(all(start<v2<end for v2 in self.graph[v1]) for v1 in adj):
-                    for v1 in adj:
-                        if v1 > v0:
-                            yield (v0,v1)
-
     def edge(self, s, t):
         return (s,t) if s < t else (t,s)
+
     def edge_set(self):
         return set(self.edges())
+
     def edge_st(self, edge):
         return edge
 
@@ -241,20 +202,15 @@ class GraphS(BaseGraph[int,Tuple[int,int]]):
         self.ty[vertex] = t
 
     def phase(self, vertex):
-        return self._phase.get(vertex,Fraction(1))
+        return self._phase.get(vertex,Phase(self.dim))
     def phases(self):
         return self._phase
     def set_phase(self, vertex, phase):
-        try:
-            self._phase[vertex] = Fraction(phase) % 2
-        except Exception:
-            self._phase[vertex] = phase
+        self._phase[vertex] = phase
     def add_to_phase(self, vertex, phase):
-        old_phase = self._phase.get(vertex, Fraction(1))
-        try:
-            self._phase[vertex] = (old_phase + Fraction(phase)) % 2
-        except Exception:
-            self._phase[vertex] = old_phase + phase
+        old_phase = self._phase.get(vertex, Phase(self.dim))
+        self._phase[vertex] = old_phase + phase
+    
     def qubit(self, vertex):
         return self._qindex.get(vertex,-1)
     def qubits(self):
@@ -271,25 +227,3 @@ class GraphS(BaseGraph[int,Tuple[int,int]]):
         if r > self._maxr: self._maxr = r
         self._rindex[vertex] = r
 
-    def is_ground(self, vertex):
-        return vertex in self._grounds
-    def grounds(self):
-        return self._grounds
-    def set_ground(self, vertex, flag=True):
-        if flag:
-            self._grounds.add(vertex)
-        else:
-            self._grounds.discard(vertex)
-
-    def vdata_keys(self, vertex):
-        return self._vdata.get(vertex, {}).keys()
-    def vdata(self, vertex, key, default=0):
-        if vertex in self._vdata:
-            return self._vdata[vertex].get(key,default)
-        else:
-            return default
-    def set_vdata(self, vertex, key, val):
-        if vertex in self._vdata:
-            self._vdata[vertex][key] = val
-        else:
-            self._vdata[vertex] = {key:val}
