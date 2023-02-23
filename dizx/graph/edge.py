@@ -70,3 +70,7 @@ class Edge(object):
 
     def __str__(self):
         return f"Edge(h={self.had},s={self.simple})"
+
+    def __repr__(self):
+        return str(self)
+
