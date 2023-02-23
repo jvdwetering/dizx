@@ -39,32 +39,6 @@ def toggle_vertex(ty: VertexType.Type) -> VertexType.Type:
     return VertexType.Z if ty == VertexType.X else VertexType.X
 
 
-def phase_to_s(a: FractionLike, t:VertexType.Type=VertexType.Z):
-    if (a == 0 and t != VertexType.H_BOX): return ''
-    if (a == 1 and t == VertexType.H_BOX): return ''
-    try:
-        a = Fraction(a)
-    except Exception:
-        return str(a)
-
-    if a == 0: return '0'
-    simstr = ''
-    if a.denominator > 256:
-        a = a.limit_denominator(256)
-        simstr = '~'
-
-    ns = '' if a.numerator == 1 else str(a.numerator)
-    ds = '' if a.denominator == 1 else '/' + str(a.denominator)
-
-    # unicode 0x03c0 = pi
-    return simstr + ns + '\u03c0' + ds
-
-def phase_is_clifford(phase: FractionLike):
-    return phase in [Fraction(i, 2) for i in range(4)]
-
-def phase_is_pauli(phase: FractionLike):
-    return phase in (0, 1)
-
 tikz_classes = {
     'boundary': 'none',
     'Z': 'Z dot',
