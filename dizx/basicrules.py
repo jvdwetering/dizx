@@ -3,6 +3,24 @@ from .graph.base import BaseGraph, VT, ET
 from .utils import VertexType
 
 
+def check_fuse(g: BaseGraph[VT, ET], v1: VT, v2: VT) -> bool:
+    return g.connected(v1, v2) and (
+            (g.type(v1) == VertexType.Z and g.type(v2) == VertexType.Z) or
+            (g.type(v1) == VertexType.X and g.type(v2) == VertexType.X)
+    ) and g.edge_object(g.edge(v1, v2)).is_simple_edge()
+
+
+def fuse(g: BaseGraph[VT, ET], v1: VT, v2: VT) -> bool:
+    if not check_fuse(g, v1, v2):
+        return False
+    g.add_to_phase(v1, g.phase(v2))
+    for v3 in g.neighbors(v2):
+        if v3 != v1:
+            g.add_edge(g.edge(v1, v3), g.edge_object(g.edge(v1, v3)))
+    g.remove_vertex(v2)
+    return True
+
+
 def check_z_elim(g: BaseGraph[VT, ET], v: VT) -> bool:
     v1, v2 = tuple(g.neighbors(v))
 
@@ -24,6 +42,7 @@ def check_z_elim(g: BaseGraph[VT, ET], v: VT) -> bool:
                 and g.type(v1) == VertexType.X and g.type(v2) == VertexType.X
         )
 
+
 def z_elim(g: BaseGraph[VT, ET], v: VT) -> bool:
     if not check_z_elim(g, v):
         return False
@@ -41,7 +60,7 @@ def z_elim(g: BaseGraph[VT, ET], v: VT) -> bool:
             and edge1.had - edge2.had % edge1.dim == 0:
         g.add_edge(g.edge(v1, v2), Edge(edge1.dim, 0, 1))
     elif (et1, et2) == (Edge.SimpleEdge, Edge.SimpleEdge)\
-            and edge1.simple - pow(edge2.simple, -1, g.dim) % edge1.dim == 0 \
+            and edge1.simple - pow(edge2.simple, -1, g.dim) % edge1.dim == 0\
             and g.type(v1) == VertexType.X and g.type(v2) == VertexType.X:
         g.add_edge(g.edge(v1, v2), Edge(edge1.dim, 0, 1))
     else:
