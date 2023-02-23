@@ -67,8 +67,8 @@ class CliffordPhase(Phase):
 
     def __init__(self, dim: int, x: int = 0, y: int = 0) -> None:
         super().__init__(dim)
-        self._x = x
-        self._y = y
+        self._x = x % self.dim
+        self._y = y % self.dim
 
     @property
     def x(self):

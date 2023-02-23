@@ -24,8 +24,16 @@ class Edge(object):
 
     def __init__(self, dim, had=0, simple=0):
         self.dim = dim
-        self.had = had % self.dim
-        self.simple = simple % self.dim
+        self._had = had % self.dim
+        self._simple = simple % self.dim
+
+    @property
+    def had(self) -> int:
+        return self._had
+
+    @property
+    def simple(self) -> int:
+        return self._simple
 
     def is_edge_present(self) -> bool:
         return self.had != 0 or self.simple != 0
