@@ -39,11 +39,11 @@ class Phase(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def __add__(self, other):
+    def __add__(self, other: Phase) -> Phase:
         pass
 
     @abc.abstractmethod
-    def __sub__(self, other):
+    def __sub__(self, other: Phase) -> Phase:
         pass
 
     @abc.abstractmethod
@@ -76,7 +76,7 @@ class CliffordPhase(Phase):
 
     @property
     def y(self):
-        return self._x
+        return self._y
 
     def get_phase(self) -> complex:
         omega = exp(1j * 2 * pi / self.dim)

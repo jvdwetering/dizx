@@ -324,17 +324,16 @@ class BaseGraph(Generic[VT, ET], metaclass=DocstringMeta):
                 et = self.edge_object(self.edge(v, w))
                 t1 = self.type(v)
                 t2 = self.type(w)
-                ## TODO: Actually implement correct scalars
-                # if t1==t2:
-                #     if et == EdgeType.SIMPLE:
-                #         self.scalar.add_node(self.phase(v)+self.phase(w))
-                #     else:
-                #         self.scalar.add_spider_pair(self.phase(v), self.phase(w))
-                # else:
-                #     if et == EdgeType.SIMPLE:
-                #         self.scalar.add_spider_pair(self.phase(v), self.phase(w))
-                #     else:
-                #         self.scalar.add_node(self.phase(v)+self.phase(w))
+                if t1==t2:
+                    if et.is_simple_edge():
+                        self.scalar.add_node(self.phase(v)+self.phase(w))
+                    else:
+                        self.scalar.add_spider_pair(self.phase(v), self.phase(w))
+                else:
+                    if et.is_simple_edge():
+                        self.scalar.add_spider_pair(self.phase(v), self.phase(w))
+                    else:
+                        self.scalar.add_node(self.phase(v)+self.phase(w))
         self.remove_vertices(rem)
 
     def remove_edges(self, edges: List[ET]) -> None:

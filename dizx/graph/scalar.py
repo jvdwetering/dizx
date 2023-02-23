@@ -96,10 +96,15 @@ class Scalar(object):
         if other.is_zero: self.is_zero = True
         if other.is_unknown: self.is_unknown = True
 
-    def add_spider_pair(self, p1: CliffordPhase, p2: CliffordPhase) -> None:
+    def add_clifford_spider_pair(self, p1: CliffordPhase, p2: CliffordPhase) -> None:
         """Add the scalar corresponding to a connected pair of spiders (p1)-H-(p2)."""
         assert p1.y == 0
         self.add_power(1)
         omega_pow = pow(2, -2, self.dim) * p1.x * p2.x + \
                     pow(2, -3, self.dim) * pow(p1.x, 2, self.dim) * p2.y
         self.add_phase(Fraction(2 * omega_pow, self.dim))
+
+    def add_spider_pair(self, p1: Phase, p2: Phase) -> None:
+        if isinstance(p1, CliffordPhase) and isinstance(p2, CliffordPhase):
+            return self.add_clifford_spider_pair(p1, p2)
+        raise NotImplementedError()
