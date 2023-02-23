@@ -21,12 +21,6 @@ class Edge(object):
         self.dim = dim
         self.had = had % self.dim
         self.simple = simple % self.dim
-    
-    def numH(self) -> int:
-        return self._numH
-
-    def numR(self) -> int:
-        return self._numNotH
 
     def isEdgePresent(self) -> bool:
         return False if (self._numH == 0 and self._numNotH == 0) else True
