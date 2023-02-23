@@ -19,10 +19,11 @@ __all__ = [
     "Graph",
     "VertexType",
     "Edge",
-    "Phase"
+    "Phase",
+    "CliffordPhase"
 ]
 
 from .graph import Graph
 from .scalar import Scalar
 from .edge import Edge
-from .phase import Phase
+from .phase import Phase,CliffordPhase

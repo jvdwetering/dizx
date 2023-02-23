@@ -188,7 +188,7 @@ def draw_d3(
               'x': (g.row(v)-minrow + 1) * scale,
               'y': (g.qubit(v)-minqub + 2) * scale,
               't': g.type(v),
-              'phase': str(g.phase(v)),
+              'phase': str(g.phase(v)).replace('(','').replace(')','').replace('0,0',''),
               }
              for v in g.vertices()]
 
@@ -199,11 +199,14 @@ def draw_d3(
         eo = g.edge_object(e)
         phase = str(int(eo))
         ty = 3 if eo.type() == Edge.HadEdge else 4
-        x = (0.5*(g.row(s) + g.row(t))-minrow + 1) * scale
-        y = (0.5*(g.qubit(s) + g.qubit(t))-minqub + 2) * scale
-        nodes.append({'name': name, 'x': x, 'y': y, 't': ty, 'phase': phase})
-        links.append({'source':str(s), 'target': name, 't':1})
-        links.append({'source':name, 'target': str(t), 't':1})
+        if ty == 4 and phase == '1':  # It is just a regular edge, so we are not gonna do anything fancy
+            links.append({'source': str(s), 'target': str(t), 't':1})
+        else:  # We are going to add a dummy H-box like thing so that we don't have to draw multiple parallel wires
+            x = (0.5*(g.row(s) + g.row(t))-minrow + 1) * scale
+            y = (0.5*(g.qubit(s) + g.qubit(t))-minqub + 2) * scale
+            nodes.append({'name': name, 'x': x, 'y': y, 't': ty, 'phase': phase})
+            links.append({'source':str(s), 'target': name, 't':1})
+            links.append({'source':name, 'target': str(t), 't':1})
     # links = [{'source': str(g.edge_s(e)),
     #           'target': str(g.edge_t(e)),
     #           't': str(g.edge_object(e).type()) } for e in g.edges()]

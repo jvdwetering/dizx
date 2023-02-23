@@ -16,7 +16,7 @@
 
 __version__ = "0.0.1"
 
-from .graph import Graph, Edge, Phase
+from .graph import Graph, Edge, Phase, CliffordPhase
 from .utils import VertexType, toggle_vertex, settings
 from .drawing import draw
 

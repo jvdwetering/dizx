@@ -112,12 +112,22 @@ function showGraph(tag, graph, width, height, scale, node_size, show_labels) {
         .attr('style', 'pointer-events: none; user-select: none;');
         // .attr("class", "selectable");
 
-    node.filter(function(d) { return d.phase != ''; })
+    node.filter(function(d) { return d.phase != '' && d.t > 2; })
         .append("text")
-        .attr("y", 0.7 * node_size + 14)
+        .attr("y", -0.1 * node_size + 4)
         .text(function (d) { return d.phase })
         .attr("text-anchor", "middle")
-        .attr("font-size", "12px")
+        .attr("font-size", "11px")
+        .attr("font-family", "monospace")
+        .attr("fill", "#000")
+        .attr('style', 'pointer-events: none; user-select: none;');
+
+    node.filter(function(d) { return d.phase != '' && d.t < 3; })
+        .append("text")
+        .attr("y", -1.3 * node_size)
+        .text(function (d) { return d.phase })
+        .attr("text-anchor", "middle")
+        .attr("font-size", "11px")
         .attr("font-family", "monospace")
         .attr("fill", "#00d")
         .attr('style', 'pointer-events: none; user-select: none;');
