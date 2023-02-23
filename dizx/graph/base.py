@@ -16,9 +16,11 @@
 
 import math
 
-from ..utils import EdgeType, VertexType, toggle_edge, vertex_is_zx, toggle_vertex
+from ..utils import VertexType, FloatInt
 
 from .scalar import Scalar
+from .phase import Phase, CliffordPhase
+from .edge import Edge
 
 from typing import TYPE_CHECKING, Union, Optional, Generic, TypeVar, Any, Sequence
 from typing import List, Dict, Set, Tuple, Mapping, Iterable, Callable, ClassVar
@@ -273,7 +275,7 @@ class BaseGraph(Generic[VT, ET], metaclass=DocstringMeta):
         v = self.add_vertices(1)[0]
         self.set_type(v, ty)
         if phase is None:
-            phase = Phase(self.dim)
+            phase = CliffordPhase(self.dim)
         self.set_qubit(v, qubit)
         self.set_row(v, row)
         if phase: 

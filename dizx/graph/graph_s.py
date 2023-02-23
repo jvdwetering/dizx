@@ -16,10 +16,12 @@
 
 from .base import BaseGraph
 
-from ..utils import VertexType, EdgeType, FractionLike, FloatInt
+from ..utils import VertexType, FloatInt
 
 from .edge import Edge
-from .phase import Phase
+from .phase import CliffordPhase
+
+from typing import Tuple, Dict, List
 
 class GraphS(BaseGraph[int,Tuple[int,int]]):
     """Purely Pythonic implementation of :class:`~graph.base.BaseGraph`."""
@@ -97,17 +99,16 @@ class GraphS(BaseGraph[int,Tuple[int,int]]):
         for i in range(self._vindex, self._vindex + amount):
             self.graph[i] = dict()
             self.ty[i] = VertexType.BOUNDARY
-            self._phase[i] = Phase(self.dim)
+            self._phase[i] = CliffordPhase(self.dim)
         self._vindex += amount
         return range(self._vindex - amount, self._vindex)
 
 
-    def add_edges(self, edges:List[Tuple[int,int,int,int]]):
-        for s,t,reg,had in edges:
-            e = Edge(self.dim,reg,had)
+    def add_edges(self, edges:List[Tuple[int,int]],edgetype: Edge):
+        for s,t in edges:
             self.nedges += 1
-            self.graph[s][t] = e
-            self.graph[t][s] = e
+            self.graph[s][t] = edgetype
+            self.graph[t][s] = edgetype
 
     def remove_vertices(self, vertices):
         for v in vertices:
@@ -202,13 +203,13 @@ class GraphS(BaseGraph[int,Tuple[int,int]]):
         self.ty[vertex] = t
 
     def phase(self, vertex):
-        return self._phase.get(vertex,Phase(self.dim))
+        return self._phase.get(vertex,CliffordPhase(self.dim))
     def phases(self):
         return self._phase
     def set_phase(self, vertex, phase):
         self._phase[vertex] = phase
     def add_to_phase(self, vertex, phase):
-        old_phase = self._phase.get(vertex, Phase(self.dim))
+        old_phase = self._phase.get(vertex, CliffordPhase(self.dim))
         self._phase[vertex] = old_phase + phase
     
     def qubit(self, vertex):

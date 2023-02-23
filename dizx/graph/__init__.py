@@ -17,14 +17,12 @@
 
 __all__ = [
     "Graph",
-    "graph",
-    "EdgeType",
     "VertexType",
-    "toggle_edge",
-    "vertex_is_zx",
-    "toggle_vertex",
+    "Edge",
+    "Phase"
 ]
 
 from .graph import Graph
 from .scalar import Scalar
-from .base import EdgeType, VertexType
+from .edge import Edge
+from .phase import Phase

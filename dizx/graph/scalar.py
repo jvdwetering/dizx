@@ -52,7 +52,8 @@ unicode_fractions = {
 
 class Scalar(object):
     """Represents a global scalar for a Graph instance."""
-    def __init__(self) -> None:
+    def __init__(self, dim) -> None:
+        self.dim = dim
         self.power2: int = 0 # Stores power of square root of two
         self.phase: Fraction = Fraction(0) # Stores complex phase of the number
         self.phasenodes: List[FractionLike] = [] # Stores list of legless spiders, by their phases.
@@ -80,7 +81,7 @@ class Scalar(object):
         return self.to_number()
 
     def copy(self) -> 'Scalar':
-        s = Scalar()
+        s = Scalar(self.dim)
         s.power2 = self.power2
         s.phase = self.phase
         s.phasenodes = copy.copy(self.phasenodes)
@@ -164,17 +165,7 @@ class Scalar(object):
         if self.is_unknown:
             d["is_unknown"] = self.is_unknown,
         return json.dumps(d)
-
-    @classmethod
-    def from_json(cls, s: str) -> 'Scalar':
-        d = json.loads(s)
-        d["phase"] = Fraction(d["phase"])
-        if "phasenodes" in d:
-            d["phasenodes"] = [Fraction(p) for p in d["phasenodes"]]
-        scalar = Scalar()
-        scalar.__dict__.update(d)
-        return scalar
-
+        
     def set_unknown(self) -> None:
         self.is_unknown = True
         self.phasenodes = []

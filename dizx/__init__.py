@@ -16,6 +16,8 @@
 
 __version__ = "0.0.1"
 
+from .graph import Graph, Edge, Phase
+
 
 if __name__ == '__main__':
     print("Please execute this as a module by running 'python -m dizx'")
