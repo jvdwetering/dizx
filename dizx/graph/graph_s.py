@@ -23,6 +23,8 @@ from .phase import CliffordPhase
 
 from typing import Tuple, Dict, List
 
+from typing import Tuple, Dict
+
 class GraphS(BaseGraph[int,Tuple[int,int]]):
     """Purely Pythonic implementation of :class:`~graph.base.BaseGraph`."""
     backend = 'simple'
@@ -183,14 +185,14 @@ class GraphS(BaseGraph[int,Tuple[int,int]]):
     def connected(self,v1,v2):
         return v2 in self.graph[v1]
 
-    def edge_type(self, e):
+    def edge_object(self, e):
         v1,v2 = e
         try:
             return self.graph[v1][v2]
         except KeyError:
             return 0
 
-    def set_edge_type(self, e, t):
+    def set_edge_object(self, e, t):
         v1,v2 = e
         self.graph[v1][v2] = t
         self.graph[v2][v1] = t

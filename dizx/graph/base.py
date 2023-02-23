@@ -1,6 +1,6 @@
 # DiZX - Python library for quantum circuit rewriting
 #        and optimisation using the qudit ZX-calculus
-# Copyright (C) 2023 - Boldiszar Poor, Lia Yeh and John van de Wetering
+# Copyright (C) 2023 - Boldizsar Poor, Lia Yeh and John van de Wetering
 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,6 +17,8 @@
 import math
 
 from ..utils import VertexType, FloatInt
+from .edge import Edge
+from .phase import Phase
 
 from .scalar import Scalar
 from .phase import Phase, CliffordPhase
@@ -138,7 +140,7 @@ class BaseGraph(Generic[VT, ET], metaclass=DocstringMeta):
         etab = {e:g.edge(vtab[self.edge_s(e)],vtab[self.edge_t(e)]) for e in self.edges()}
         g.add_edges(etab.values())
         for e,f in etab.items():
-            g.set_edge_type(f, self.edge_type(e))
+            g.set_edge_object(f, self.edge_object(e))
         return g
 
     def adjoint(self) -> 'BaseGraph':
@@ -282,13 +284,13 @@ class BaseGraph(Generic[VT, ET], metaclass=DocstringMeta):
             self.set_phase(v, phase)
         return v
 
-    def add_edges(self, edges: Iterable[ET], edgetype:Edge) -> None:
+    def add_edges(self, edges: Iterable[ET], edge_object: Edge) -> None:
         """Adds a list of edges to the graph."""
         raise NotImplementedError("Not implemented on backend " + type(self).backend)
 
-    def add_edge(self, edge: ET, edgetype:Edge) -> None:
+    def add_edge(self, edge: ET, edge_object: Edge) -> None:
         """Adds a single edge of the given type"""
-        self.add_edges([edge], edgetype)
+        self.add_edges([edge], edge_object)
 
 
     def remove_vertices(self, vertices: Iterable[VT]) -> None:
@@ -319,7 +321,7 @@ class BaseGraph(Generic[VT, ET], metaclass=DocstringMeta):
                 # At this point w and v are only connected to each other
                 rem.append(v)
                 rem.append(w)
-                et = self.edge_type(self.edge(v,w))
+                et = self.edge_object(self.edge(v, w))
                 t1 = self.type(v)
                 t2 = self.type(w)
                 ## TODO: Actually implement correct scalars
@@ -399,12 +401,12 @@ class BaseGraph(Generic[VT, ET], metaclass=DocstringMeta):
         """Returns whether vertices v1 and v2 share an edge."""
         raise NotImplementedError("Not implemented on backend " + type(self).backend)
 
-    def edge_type(self, e: ET) -> Edge:
+    def edge_object(self, e: ET) -> Edge:
         """Returns the type of the given edge:
         ``EdgeType.SIMPLE`` if it is regular, ``EdgeType.HADAMARD`` if it is a Hadamard edge,
         0 if the edge is not in the graph."""
         raise NotImplementedError("Not implemented on backend " + type(self).backend)
-    def set_edge_type(self, e: ET, t: Edge) -> None:
+    def set_edge_object(self, e: ET, t: Edge) -> None:
         """Sets the type of the given edge."""
         raise NotImplementedError("Not implemented on backend " + type(self).backend)
 
