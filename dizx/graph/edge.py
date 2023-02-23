@@ -14,48 +14,50 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""This file contains the Edge class used to represent the edges between two nodes in a Graph."""
+"""This file contains the Edge class used to represent the edges between two
+nodes in a Graph."""
+
 
 class Edge(object):
     SimpleEdge = 1
     HadEdge = 2
 
-    def __init__(self,dim,had=0,simple=0):
+    def __init__(self, dim, had=0, simple=0):
         self.dim = dim
         self.had = had % self.dim
         self.simple = simple % self.dim
 
-    def isEdgePresent(self) -> bool:
-        return False if (self._numH == 0 and self._numNotH == 0) else True
+    def is_edge_present(self) -> bool:
+        return self.had != 0 or self.simple != 0
 
     def is_had_edge(self) -> bool:
-        return True if (self.isEdgePresent() and self._numNotH == 0) else False
-        
+        return self.is_edge_present() and self.simple == 0
+
     def is_simple_edge(self) -> bool:
-        return True if (self.isEdgePresent() and self._numH == 0) else False
+        return self.is_edge_present() and self.had == 0
 
     def is_reduced(self) -> bool:
         return self.had == 0 or self.simple == 0
 
-    def type(self) -> bool:
+    def type(self) -> int:
         if not self.is_reduced():
-            raise ValueError("This edge is not in reduced form, so it doesn't have a definitive type")
+            raise ValueError(
+                "This edge is not in reduced form, so it doesn't have a definitive type")
         return Edge.SimpleEdge if self.had == 0 else Edge.HadEdge
 
     def to_tuple(self):
-        return (self.had, self.simple)
+        return self.had, self.simple
 
-
-    def __add__(edge1, edge2):
-        assert(edge1.dim == edge2.dim)
-        return Edge(edge1.dim, edge1.had + edge2.had, edge1.simple + edge2.simple)
+    def __add__(self, edge2):
+        assert (self.dim == edge2.dim)
+        return Edge(self.dim, self.had + edge2.had,
+                    self.simple + edge2.simple)
 
     def __bool__(self):
-        return self.isEdgePresent()
+        return self.is_edge_present()
 
     def __int__(self):
         return self.had + self.simple
 
     def __str__(self):
-        return "Edge(h={},s={})" % (self.had, self.simple)
-
+        return f"Edge(h={self.had},s={self.simple})"
