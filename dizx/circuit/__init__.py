@@ -21,8 +21,7 @@ import numpy as np
 
 from .gates import Gate, gate_types, XPhase, ZPhase, NEG, X, Z, S, CZ, CX, SWAP, HAD, Measurement
 
-#from ..graph.base import BaseGraph
-#from ..utils import EdgeType
+from ..graph.base import BaseGraph
 
 CircuitLike = Union['Circuit', Gate]
 
@@ -40,9 +39,9 @@ class Circuit(object):
     The methods in this class that convert a specification of a circuit into an instance of this class,
     generally do not check whether the specification is well-defined. If a bad input is given,
     the behaviour is undefined."""
-    def __init__(self, qudit_amount: int, name: str = '', bit_amount: Optional[int] = None) -> None:
+    def __init__(self, qudit_amount: int, name: str = '', dit_amount: Optional[int] = None) -> None:
         self.qudits: int        = qudit_amount
-        self.bits: int = 0 if bit_amount is None else bit_amount
+        self.dits: int = 0 if dit_amount is None else dit_amount
         self.gates:  List[Gate] = []
         self.name:   str        = name
 
@@ -50,18 +49,18 @@ class Circuit(object):
 
 
     def __str__(self) -> str:
-        return "Circuit({!s} qudits, {!s} bits, {!s} gates)".format(self.qudits,self.bits,len(self.gates))
+        return "Circuit({!s} qudits, {!s} dits, {!s} gates)".format(self.qudits,self.dits,len(self.gates))
 
     def __repr__(self) -> str:
         return str(self)
 
     def copy(self) -> 'Circuit':
-        c = Circuit(self.qudits, self.name, self.bits)
+        c = Circuit(self.qudits, self.name, self.dits)
         c.gates = [g.copy() for g in self.gates]
         return c
 
     def adjoint(self) -> 'Circuit':
-        c = Circuit(self.qudits, self.name + 'Adjoint', self.bits)
+        c = Circuit(self.qudits, self.name + 'Adjoint', self.dits)
         for g in reversed(self.gates):
             c.gates.append(g.to_adjoint())
         return c
@@ -81,7 +80,7 @@ class Circuit(object):
     #         up_to_swaps: if set to True, only checks equality up to a permutation of the qudits.
 
     #     """
-    #     if self.bits or other.bits:
+    #     if self.dits or other.dits:
     #         # TODO once full_gnd_reduce is merged
     #         raise NotImplementedError("The equality verification does not support hybrid circuits.")
 
@@ -136,7 +135,7 @@ class Circuit(object):
     def to_basic_gates(self) -> 'Circuit':
         """Returns a new circuit with every gate expanded in terms of X/Z phases, Z, S, Hadamard,
         and the 2-qudit gate CZ."""
-        c = Circuit(self.qudits, name=self.name, bit_amount=self.bits)
+        c = Circuit(self.qudits, name=self.name, dit_amount=self.dits)
         for g in self.gates:
             c.gates.extend(g.to_basic_gates())
         return c
@@ -202,14 +201,14 @@ class Circuit(object):
     #     from .graphparser import graph_to_circuit
     #     return graph_to_circuit(g, split_phases=split_phases)
 
-    # def to_graph(self, zh:bool=False, compress_rows:bool=True, backend:Optional[str]=None) -> BaseGraph:
-    #     """Turns the circuit into a ZX-Graph.
-    #     If ``compress_rows`` is set, it tries to put single qudit gates on different qudits,
-    #     on the same row."""
-    #     from .graphparser import circuit_to_graph
+    def to_graph(self, zh:bool=False, compress_rows:bool=True) -> BaseGraph:
+        """Turns the circuit into a ZX-Graph.
+        If ``compress_rows`` is set, it tries to put single qudit gates on different qudits,
+        on the same row."""
+        from .graphparser import circuit_to_graph
 
-    #     return circuit_to_graph(self if zh else self.to_basic_gates(),
-    #         compress_rows, backend)
+        return circuit_to_graph(self if zh else self.to_basic_gates(),
+            compress_rows)
 
     # def to_tensor(self, preserve_scalar:bool=True) -> np.ndarray:
     #     """Returns a numpy tensor describing the circuit."""
