@@ -3,20 +3,54 @@ from .graph.base import BaseGraph, VT, ET
 from .utils import VertexType
 
 
-def check_fuse(g: BaseGraph[VT, ET], v1: VT, v2: VT) -> bool:
-    return g.connected(v1, v2) and (
-            (g.type(v1) == VertexType.Z and g.type(v2) == VertexType.Z) or
-            (g.type(v1) == VertexType.X and g.type(v2) == VertexType.X)
-    ) and g.edge_object(g.edge(v1, v2)).is_simple_edge()
+def check_x_color_change(g: BaseGraph[VT, ET], v: VT) -> bool:
+    return g.type(v) == VertexType.X
 
 
-def fuse(g: BaseGraph[VT, ET], v1: VT, v2: VT) -> bool:
-    if not check_fuse(g, v1, v2):
+def _set_edge_x_color_change(g: BaseGraph[VT, ET], v: VT, neigh: VT) -> None:
+    et = g.edge(v, neigh)
+    e = g.edge_object(et)
+    if e.simple != 0 and e.had != 0:
+        raise ValueError(f"The edge need to be normalised between vertex {v} "
+                         f"and {neigh}.")
+    neigh_type = type(neigh)
+    if e.is_had_edge() and neigh_type == VertexType.Z:
+        pass
+    elif e.is_had_edge() and neigh_type == VertexType.X:
+        pass
+    elif e.is_had_edge() and neigh_type == VertexType.BOUNDARY:
+        pass
+    elif e.is_simple_edge() and (
+            neigh_type == VertexType.Z or neigh_type == VertexType.X):
+        g.set_edge_object(et, Edge(had=e.simple, simple=0))
+    elif e.is_simple_edge() and neigh_type == VertexType.BOUNDARY:
+        pass
+
+
+def x_color_change(g: BaseGraph[VT, ET], v: VT) -> bool:
+    if not check_x_color_change(g, v):
+        return False
+
+    g.set_type(v, VertexType.Z)
+    for neigh in g.neighbors(v):
+        _set_edge_x_color_change(g, v, neigh)
+
+    return True
+
+
+def check_z_fuse(g: BaseGraph[VT, ET], v1: VT, v2: VT) -> bool:
+    return g.connected(v1, v2)\
+        and g.type(v1) == VertexType.Z and g.type(v2) == VertexType.Z\
+        and g.edge_object(g.edge(v1, v2)).is_simple_edge()
+
+
+def z_fuse(g: BaseGraph[VT, ET], v1: VT, v2: VT) -> bool:
+    if not check_z_fuse(g, v1, v2):
         return False
     g.add_to_phase(v1, g.phase(v2))
     for v3 in g.neighbors(v2):
         if v3 != v1:
-            g.add_edge(g.edge(v1, v3), g.edge_object(g.edge(v1, v3)))
+            g.add_edge(g.edge(v1, v3), g.edge_object(g.edge(v2, v3)))
     g.remove_vertex(v2)
     return True
 
