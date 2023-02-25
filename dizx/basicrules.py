@@ -12,8 +12,8 @@ def _add_vertex_between(
         v: VT, w: VT, edge_to_v: Edge, edge_to_w: Edge) -> None:
     new = g.add_vertex(
         ty,
-        qubit=(g.qubit(w) - g.qubit(v)) / 2 or g.qubit(w),
-        row=(g.row(w) - g.row(v)) / 2 or g.row(w)
+        qubit=(g.qubit(w) + g.qubit(v)) / 2 or g.qubit(w),
+        row=(g.row(w) + g.row(v)) / 2 or g.row(w)
     )
     g.add_edge(g.edge(v, new), edge_to_v)
     g.add_edge(g.edge(new, w), edge_to_w)
@@ -41,7 +41,7 @@ def x_color_change(g: BaseGraph[VT, ET], v: VT) -> bool:
         return False
 
     g.set_type(v, VertexType.Z)
-    # Copy neighbours because it can change during the next for-loop
+    # Copy `neighbours` because it can change during the next for-loop
     current_neighbors = [n for n in g.neighbors(v)]
     for neigh in current_neighbors:
         _set_edge_x_color_change(g, v, neigh)
