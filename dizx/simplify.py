@@ -3,7 +3,7 @@ import itertools
 from . import Edge
 from .graph.base import BaseGraph, VT, ET
 from .utils import VertexType
-from .basicrules import x_color_change
+from .basicrules import x_color_change, _add_vertex_between
 
 
 def to_gh(g: BaseGraph[VT, ET]) -> None:
@@ -17,7 +17,7 @@ def to_gh(g: BaseGraph[VT, ET]) -> None:
             x_color_change(g, v)
 
 
-def is_graph_like(g: BaseGraph):
+def is_graph_like(g: BaseGraph[VT, ET]) -> bool:
     """Puts a ZX-diagram in graph-like form"""
 
     # checks that all spiders are Z-spiders
@@ -95,23 +95,36 @@ def is_graph_like(g: BaseGraph):
 #                 g.add_edge(g.edge(z, n), edgetype=EdgeType.SIMPLE)
 #
 #     # each Z-spider can only be connected to at most 1 I/O
-#     vs = list(g.vertices())
-#     for v in vs:
-#         if not g.type(v) == VertexType.Z:
-#             continue
-#         boundary_ns = [n for n in g.neighbors(v) if
-#                        g.type(n) == VertexType.BOUNDARY]
-#         if len(boundary_ns) <= 1:
-#             continue
+#     unfuse_multi_boundary_connections(g)
 #
-#         # add dummy spiders for all but one
-#         for b in boundary_ns[:-1]:
-#             z1 = g.add_vertex(ty=zx.VertexType.Z)
-#             z2 = g.add_vertex(ty=zx.VertexType.Z)
+#     # make drawings nice
+#     g.ensure_enough_distance()
 #
-#             g.remove_edge(g.edge(v, b))
-#             g.add_edge(g.edge(z1, z2), edgetype=EdgeType.HADAMARD)
-#             g.add_edge(g.edge(b, z1), edgetype=EdgeType.SIMPLE)
-#             g.add_edge(g.edge(z2, v), edgetype=EdgeType.HADAMARD)
-#
-#     assert (is_graph_like(g))
+#     assert is_graph_like(g)
+
+
+def unfuse_multi_boundary_connections(g):  # FIXME
+    zs = [v for v in g.vertices() if g.type(v) == VertexType.Z]
+    for v in zs:
+        boundary_ns = [n for n in g.neighbors(v) if
+                       g.type(n) == VertexType.BOUNDARY]
+        if len(boundary_ns) <= 1:
+            continue
+
+        # add dummy spiders for all but one
+        for b in boundary_ns[:-1]:
+            e = g.edge_object(g.edge(v, b))
+            g.remove_edge(g.edge(v, b))
+            if e.is_simple_edge():
+                new1 = g.add_vertex(
+                    VertexType.Z,
+                    qubit=(2*g.qubit(b) + g.qubit(v)) / 3 or g.qubit(b),
+                    row=(2*g.row(b) + g.row(v)) / 3 or g.row(b)
+                )
+                g.add_edge(g.edge(b, new1), Edge(simple=1))
+                n = _add_vertex_between(
+                    g, VertexType.Z, v, new1,
+                    Edge(had=(-1) % g.dim), Edge(had=1))
+            else:  # e.is_had_edge():
+                _add_vertex_between(g, VertexType.Z, v, b, e, Edge(simple=1))
+

@@ -9,7 +9,7 @@ def check_x_color_change(g: BaseGraph[VT, ET], v: VT) -> bool:
 
 def _add_vertex_between(
         g: BaseGraph[VT, ET], ty: VertexType.Type,
-        v: VT, w: VT, edge_to_v: Edge, edge_to_w: Edge) -> None:
+        v: VT, w: VT, edge_to_v: Edge, edge_to_w: Edge) -> VT:
     new = g.add_vertex(
         ty,
         qubit=(g.qubit(w) + g.qubit(v)) / 2 or g.qubit(w),
@@ -17,6 +17,7 @@ def _add_vertex_between(
     )
     g.add_edge(g.edge(v, new), edge_to_v)
     g.add_edge(g.edge(new, w), edge_to_w)
+    return new
 
 
 def _set_edge_x_color_change(g: BaseGraph[VT, ET], v: VT, neigh: VT) -> None:
