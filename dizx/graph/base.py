@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import math
+import itertools
 
 from ..utils import VertexType, FloatInt
 from .edge import Edge
@@ -460,3 +461,30 @@ class BaseGraph(Generic[VT, ET], metaclass=DocstringMeta):
         """Set both the qubit index and row index of the vertex."""
         self.set_qubit(vertex, q)
         self.set_row(vertex, r)
+
+    def ensure_enough_distance(self, distance=1):
+
+        def get_ordering_by(fn):
+            # returns e.g. [[[_,0], [_,0], ...], [[_,0.5]], [[_,1], ...]]
+            return [list(g) for _, g in itertools.groupby(
+                sorted(
+                    [[v, fn(v)] for v in self.vertices()],
+                    key=lambda x: x[1]
+                ),
+                key=lambda x: x[1]
+            )]
+
+        def reorder_by(ordering, order_setter):
+            for i in range(len(ordering) - 1):
+                value = ordering[i][0][1]
+                next_value = ordering[i + 1][0][1]
+                if next_value - value == distance:
+                    continue
+                delta = distance - (next_value - value)
+                # Change distance from previous groups
+                for j, (v, x) in enumerate(ordering[i + 1]):
+                    order_setter(v, x + delta)
+                    ordering[i + 1][j][1] += delta
+
+        reorder_by(get_ordering_by(self.qubit), self.set_qubit)
+        reorder_by(get_ordering_by(self.row), self.set_row)
