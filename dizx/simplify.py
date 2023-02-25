@@ -1,4 +1,5 @@
 import itertools
+from typing import Optional
 
 from . import Edge
 from .graph.base import BaseGraph, VT, ET
@@ -57,53 +58,33 @@ def is_graph_like(g: BaseGraph[VT, ET]) -> bool:
     return True
 
 
-# def to_graph_like(g):
-#     """Checks if a ZX-diagram is graph-like"""
-#
-#     # turn all red spiders into green spiders
-#     to_gh(g)
-#
-#     # simplify: remove excess HAD's, fuse along non-HAD edges, remove parallel edges and self-loops
-#     spider_simp(g, quiet=True)
-#
-#     # ensure all I/O are connected to a Z-spider
-#     bs = [v for v in g.vertices() if g.type(v) == VertexType.BOUNDARY]
-#     for v in bs:
-#
-#         # if it's already connected to a Z-spider, continue on
-#         if any([g.type(n) == VertexType.Z for n in g.neighbors(v)]):
-#             continue
-#
-#         # have to connect the (boundary) vertex to a Z-spider
-#         ns = list(g.neighbors(v))
-#         for n in ns:
-#             # every neighbor is another boundary or an H-Box
-#             assert (g.type(n) in [VertexType.BOUNDARY, VertexType.H_BOX])
-#             if g.type(n) == VertexType.BOUNDARY:
-#                 z1 = g.add_vertex(ty=zx.VertexType.Z)
-#                 z2 = g.add_vertex(ty=zx.VertexType.Z)
-#                 z3 = g.add_vertex(ty=zx.VertexType.Z)
-#                 g.remove_edge(g.edge(v, n))
-#                 g.add_edge(g.edge(v, z1), edgetype=EdgeType.SIMPLE)
-#                 g.add_edge(g.edge(z1, z2), edgetype=EdgeType.HADAMARD)
-#                 g.add_edge(g.edge(z2, z3), edgetype=EdgeType.HADAMARD)
-#                 g.add_edge(g.edge(z3, n), edgetype=EdgeType.SIMPLE)
-#             else:  # g.type(n) == VertexType.H_BOX
-#                 z = g.add_vertex(ty=zx.VertexType.Z)
-#                 g.remove_edge(g.edge(v, n))
-#                 g.add_edge(g.edge(v, z), edgetype=EdgeType.SIMPLE)
-#                 g.add_edge(g.edge(z, n), edgetype=EdgeType.SIMPLE)
-#
-#     # each Z-spider can only be connected to at most 1 I/O
-#     unfuse_multi_boundary_connections(g)
-#
-#     # make drawings nice
-#     g.ensure_enough_distance()
-#
-#     assert is_graph_like(g)
+def to_graph_like(g: BaseGraph[VT, ET]) -> None:
+    """Checks if a ZX-diagram is graph-like"""
+
+    # turn all red spiders into green spiders
+    to_gh(g)
+
+    # simplify: remove excess HAD's, fuse along non-HAD edges, remove parallel edges and self-loops
+    spider_simp(g, quiet=True)
+
+    # ensure all I/O are connected to a Z-spider
+    bs = [v for v in g.vertices() if g.type(v) == VertexType.BOUNDARY]
+    for v in bs:
+        # have to connect the (boundary) vertex to a Z-spider
+        ns = list(g.neighbors(v))
+        if len(ns) == 1 and g.type(ns[0]) == VertexType.BOUNDARY:
+            _add_vertices_before_boundary(g, v, ns[0])
+
+    # each Z-spider can only be connected to at most 1 I/O
+    unfuse_multi_boundary_connections(g)
+
+    # make drawings nice
+    g.ensure_enough_distance()
+
+    assert is_graph_like(g)
 
 
-def unfuse_multi_boundary_connections(g):  # FIXME
+def unfuse_multi_boundary_connections(g: BaseGraph[VT, ET]) -> None:
     zs = [v for v in g.vertices() if g.type(v) == VertexType.Z]
     for v in zs:
         boundary_ns = [n for n in g.neighbors(v) if
@@ -113,18 +94,36 @@ def unfuse_multi_boundary_connections(g):  # FIXME
 
         # add dummy spiders for all but one
         for b in boundary_ns[:-1]:
-            e = g.edge_object(g.edge(v, b))
-            g.remove_edge(g.edge(v, b))
-            if e.is_simple_edge():
-                new1 = g.add_vertex(
-                    VertexType.Z,
-                    qubit=(2*g.qubit(b) + g.qubit(v)) / 3 or g.qubit(b),
-                    row=(2*g.row(b) + g.row(v)) / 3 or g.row(b)
-                )
-                g.add_edge(g.edge(b, new1), Edge(simple=1))
-                n = _add_vertex_between(
-                    g, VertexType.Z, v, new1,
-                    Edge(had=(-1) % g.dim), Edge(had=1))
-            else:  # e.is_had_edge():
-                _add_vertex_between(g, VertexType.Z, v, b, e, Edge(simple=1))
+            _add_vertices_before_boundary(g, b, v)
 
+
+def _add_vertices_before_boundary(g: BaseGraph[VT, ET], v: VT, w: VT) -> None:
+    e = g.edge_object(g.edge(w, v))
+    g.remove_edge(g.edge(w, v))
+    n = (g.type(v) == VertexType.BOUNDARY) + (g.type(w) == VertexType.BOUNDARY)
+    assert n > 0
+    new_z_1 = _add_z_neighbour_if_boundary(g, v, w, n)
+    new_z_2 = _add_z_neighbour_if_boundary(g, w, v, n)
+    # n1 can be 0, so use `is None`!
+    z_1: VT = v if new_z_1 is None else new_z_1
+    z_2: VT = w if new_z_2 is None else new_z_2
+
+    if e.is_simple_edge():
+        n = _add_vertex_between(g, VertexType.Z, z_1, z_2,
+                                Edge(had=(-1) % g.dim), Edge(had=1))
+    else:  # e.is_had_edge():
+        g.add_edge(g.edge(z_1, z_2), e)
+
+
+def _add_z_neighbour_if_boundary(
+        g: BaseGraph[VT, ET], b: VT, w: VT, n: int
+) -> Optional[VT]:
+    if g.type(b) == VertexType.BOUNDARY:
+        new = g.add_vertex(
+            VertexType.Z,
+            qubit=((1 + n) * g.qubit(b) + g.qubit(w)) / (2 + n) or g.qubit(b),
+            row=((1 + n) * g.row(b) + g.row(w)) / (2 + n) or g.row(b)
+        )
+        g.add_edge(g.edge(b, new), Edge(simple=1))
+        return new
+    return None
