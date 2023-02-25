@@ -99,16 +99,18 @@ def z_elim(g: BaseGraph[VT, ET], v: VT) -> bool:
     et1, et2 = edge1.type(), edge2.type()
 
     if (et1, et2) == (Edge.HadEdge, Edge.SimpleEdge):
-        g.add_edge(g.edge(v1, v2), Edge(edge1.dim, edge1.had * edge2.simple))
+        g.add_edge(g.edge(v1, v2), Edge.make(
+            g.dim, had=edge1.had * edge2.simple))
     elif (et1, et2) == (Edge.SimpleEdge, Edge.HadEdge):
-        g.add_edge(g.edge(v1, v2), Edge(edge1.dim, edge1.simple * edge2.had))
+        g.add_edge(g.edge(v1, v2), Edge.make(
+            g.dim, had=edge1.simple * edge2.had))
     elif (et1, et2) == (Edge.HadEdge, Edge.HadEdge)\
-            and edge1.had - edge2.had % edge1.dim == 0:
-        g.add_edge(g.edge(v1, v2), Edge(edge1.dim, 0, 1))
+            and edge1.had - edge2.had % g.dim == 0:
+        g.add_edge(g.edge(v1, v2), Edge.make(g.dim, simple=1))
     elif (et1, et2) == (Edge.SimpleEdge, Edge.SimpleEdge)\
-            and edge1.simple - pow(edge2.simple, -1, g.dim) % edge1.dim == 0\
+            and edge1.simple - pow(edge2.simple, -1, g.dim) % g.dim == 0\
             and g.type(v1) == VertexType.X and g.type(v2) == VertexType.X:
-        g.add_edge(g.edge(v1, v2), Edge(edge1.dim, 0, 1))
+        g.add_edge(g.edge(v1, v2), Edge.make(g.dim, simple=1))
     else:
         return False
 
