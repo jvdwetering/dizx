@@ -77,7 +77,7 @@ class BaseGraph(Generic[VT, ET], metaclass=DocstringMeta):
         self.dim = dim  # The qudit dimension this Graph is working on
 
         self.scalar: Scalar = Scalar(dim)
-        
+
 
     def __str__(self) -> str:
         return "Graph({} vertices, {} edges, dimension {})".format(
@@ -118,15 +118,15 @@ class BaseGraph(Generic[VT, ET], metaclass=DocstringMeta):
 
         if adjoint:
             for i in ph: ph[i] = ph[i].adjoint()
-        
+
         for v in self.vertices():
             i = g.add_vertex(ty[v],phase=ph[v])
             if v in qs: g.set_qubit(i,qs[v])
-            if v in rs: 
+            if v in rs:
                 if adjoint: g.set_row(i, maxr-rs[v])
                 else: g.set_row(i, rs[v])
             vtab[v] = i
-        
+
 
         new_inputs = tuple(vtab[i] for i in self.inputs())
         new_outputs = tuple(vtab[i] for i in self.outputs())
@@ -136,7 +136,7 @@ class BaseGraph(Generic[VT, ET], metaclass=DocstringMeta):
         else:
             g.set_inputs(new_outputs)
             g.set_outputs(new_inputs)
-        
+
         etab = {e:g.edge(vtab[self.edge_s(e)],vtab[self.edge_t(e)]) for e in self.edges()}
         g.add_edges(etab.values())
         for e,f in etab.items():
@@ -196,7 +196,7 @@ class BaseGraph(Generic[VT, ET], metaclass=DocstringMeta):
         if self.num_inputs() == 0:
             self.auto_detect_io()
         max_r = self.depth() - 1
-        if max_r <= 2: 
+        if max_r <= 2:
             for o in self.outputs():
                 self.set_row(o,4)
             max_r = self.depth() -1
@@ -265,10 +265,10 @@ class BaseGraph(Generic[VT, ET], metaclass=DocstringMeta):
         new vertices added to the graph, namely: range(g.vindex() - amount, g.vindex())"""
         raise NotImplementedError("Not implemented on backend " + type(self).backend)
 
-    def add_vertex(self, 
-                   ty:VertexType.Type=VertexType.BOUNDARY, 
-                   qubit:FloatInt=-1, 
-                   row:FloatInt=-1, 
+    def add_vertex(self,
+                   ty:VertexType.Type = VertexType.BOUNDARY,
+                   qubit:FloatInt=-1,
+                   row:FloatInt=-1,
                    phase:Optional[Phase]=None,
                    ) -> VT:
         """Add a single vertex to the graph and return its index.
@@ -280,7 +280,7 @@ class BaseGraph(Generic[VT, ET], metaclass=DocstringMeta):
             phase = CliffordPhase(self.dim)
         self.set_qubit(v, qubit)
         self.set_row(v, row)
-        if phase: 
+        if phase:
             self.set_phase(v, phase)
         return v
 

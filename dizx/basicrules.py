@@ -7,24 +7,33 @@ def check_x_color_change(g: BaseGraph[VT, ET], v: VT) -> bool:
     return g.type(v) == VertexType.X
 
 
+def _add_vertex_between(
+        g: BaseGraph[VT, ET], ty: VertexType.Type,
+        v: VT, w: VT, edge_to_v: Edge, edge_to_w: Edge) -> None:
+    new = g.add_vertex(
+        ty,
+        qubit=(g.qubit(w) - g.qubit(v)) / 2 or g.qubit(w),
+        row=(g.row(w) - g.row(v)) / 2 or g.row(w)
+    )
+    g.add_edge(g.edge(v, new), edge_to_v)
+    g.add_edge(g.edge(new, w), edge_to_w)
+
+
 def _set_edge_x_color_change(g: BaseGraph[VT, ET], v: VT, neigh: VT) -> None:
     et = g.edge(v, neigh)
     e = g.edge_object(et)
     if e.simple != 0 and e.had != 0:
         raise ValueError(f"The edge need to be normalised between vertex {v} "
                          f"and {neigh}.")
-    neigh_type = type(neigh)
-    if e.is_had_edge() and neigh_type == VertexType.Z:
-        pass
+    neigh_type = g.type(neigh)
+    if e.is_had_edge() and (
+            neigh_type == VertexType.Z or neigh_type == VertexType.BOUNDARY):
+        g.remove_edge(et)
+        _add_vertex_between(g, VertexType.Z, v, neigh, Edge(1), Edge(1))
     elif e.is_had_edge() and neigh_type == VertexType.X:
-        pass
-    elif e.is_had_edge() and neigh_type == VertexType.BOUNDARY:
-        pass
-    elif e.is_simple_edge() and (
-            neigh_type == VertexType.Z or neigh_type == VertexType.X):
+        g.set_edge_object(et, Edge.make(g.dim, had=0, simple=-e.had))
+    elif e.is_simple_edge():
         g.set_edge_object(et, Edge(had=e.simple, simple=0))
-    elif e.is_simple_edge() and neigh_type == VertexType.BOUNDARY:
-        pass
 
 
 def x_color_change(g: BaseGraph[VT, ET], v: VT) -> bool:
@@ -32,7 +41,9 @@ def x_color_change(g: BaseGraph[VT, ET], v: VT) -> bool:
         return False
 
     g.set_type(v, VertexType.Z)
-    for neigh in g.neighbors(v):
+    # Copy neighbours because it can change during the next for-loop
+    current_neighbors = [n for n in g.neighbors(v)]
+    for neigh in current_neighbors:
         _set_edge_x_color_change(g, v, neigh)
 
     return True

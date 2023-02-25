@@ -26,6 +26,10 @@ class Edge(object):
         self._had = had
         self._simple = simple
 
+    @classmethod
+    def make(cls, dim, had=0, simple=0):
+        return cls(had=had % dim, simple=simple % dim)
+
     @property
     def had(self) -> int:
         return self._had
