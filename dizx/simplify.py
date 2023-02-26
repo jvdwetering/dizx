@@ -4,7 +4,8 @@ from typing import Optional
 from . import Edge
 from .graph.base import BaseGraph, VT, ET
 from .utils import VertexType
-from .basicrules import x_color_change, _add_vertex_between
+from .basicrules import x_color_change, _add_vertex_between, z_fuse,\
+    remove_self_loop_on_z, remove_parallel_edge_between_zs
 
 
 def to_gh(g: BaseGraph[VT, ET]) -> None:
@@ -64,8 +65,18 @@ def to_graph_like(g: BaseGraph[VT, ET]) -> None:
     # turn all red spiders into green spiders
     to_gh(g)
 
-    # simplify: remove excess HAD's, fuse along non-HAD edges, remove parallel edges and self-loops
-    spider_simp(g, quiet=True)
+    # simplify: fuse along non-HAD edges
+    fuse_along_simple_edges(g)
+
+    #  remove self-loops
+    for v in g.vertices():
+        # if there's no self-loop, the function does nothing
+        remove_self_loop_on_z(g, v)
+
+    #  remove parallel edges
+    for e in g.edges():
+        # if there's no parallel edges, the function does nothing
+        remove_parallel_edge_between_zs(g, *e)
 
     # ensure all I/O are connected to a Z-spider
     bs = [v for v in g.vertices() if g.type(v) == VertexType.BOUNDARY]
@@ -82,6 +93,19 @@ def to_graph_like(g: BaseGraph[VT, ET]) -> None:
     g.ensure_enough_distance()
 
     assert is_graph_like(g)
+
+
+def fuse_along_simple_edges(g):
+    zs = [v for v in g.vertices() if g.type(v) == VertexType.Z]
+    fused_zs = []
+    for z in zs:
+        if z in fused_zs:
+            continue
+        ns = [v for v in g.neighbors(z) if g.type(v) == VertexType.Z]
+        fused_zs += [
+            n for n in ns if
+            z_fuse(g,z,n)
+        ]
 
 
 def unfuse_multi_boundary_connections(g: BaseGraph[VT, ET]) -> None:

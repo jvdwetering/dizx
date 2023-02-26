@@ -1,6 +1,40 @@
-from . import Edge
+from . import Edge, Phase, CliffordPhase
 from .graph.base import BaseGraph, VT, ET
 from .utils import VertexType
+
+
+def check_remove_parallel_edge_between_zs(
+        g: BaseGraph[VT, ET], z1: VT, z2: VT) -> bool:
+    return not (g.edge_object(g.edge(z1, z2)).is_reduced())\
+        and g.type(z1) == VertexType.Z and g.type(z2) == VertexType.Z
+
+
+def remove_parallel_edge_between_zs(
+        g: BaseGraph[VT, ET], z1: VT, z2: VT) -> bool:
+    if not check_remove_parallel_edge_between_zs(g, z1, z2):
+        return False
+    e = g.edge(z1, z2)
+    eo = g.edge_object(e)
+    g.add_to_phase(z1, CliffordPhase(dim=g.dim, y=2 * eo.had))
+    g.set_edge_object(e, Edge(simple=1))
+    return z_fuse(g, z1, z2)
+
+
+def check_remove_self_loop_on_z(g: BaseGraph[VT, ET], v: VT) -> bool:
+    return g.edge_object(g.edge(v, v)).is_edge_present()\
+        and g.type(v) == VertexType.Z
+
+
+def remove_self_loop_on_z(g: BaseGraph[VT, ET], v: VT) -> bool:
+    if not check_remove_self_loop_on_z(g, v):
+        return False
+    e = g.edge_object(g.edge(v, v))
+    if e.is_simple_edge():
+        pass  # We don't need to do anything
+    if e.is_had_edge():
+        g.add_to_phase(v, CliffordPhase(dim=g.dim, y=2 * e.had))
+    g.remove_edge(g.edge(v, v))
+    return True
 
 
 def check_x_color_change(g: BaseGraph[VT, ET], v: VT) -> bool:
@@ -51,7 +85,7 @@ def x_color_change(g: BaseGraph[VT, ET], v: VT) -> bool:
 
 
 def check_z_fuse(g: BaseGraph[VT, ET], v1: VT, v2: VT) -> bool:
-    return g.connected(v1, v2)\
+    return v1 != v2 and g.connected(v1, v2)\
         and g.type(v1) == VertexType.Z and g.type(v2) == VertexType.Z\
         and g.edge_object(g.edge(v1, v2)).is_simple_edge()
 
@@ -60,8 +94,11 @@ def z_fuse(g: BaseGraph[VT, ET], v1: VT, v2: VT) -> bool:
     if not check_z_fuse(g, v1, v2):
         return False
     g.add_to_phase(v1, g.phase(v2))
-    for v3 in g.neighbors(v2):
-        if v3 != v1:
+    for v3 in list(g.neighbors(v2)):
+        if v2 == v3:
+            g.add_edge(g.edge(v1, v1), g.edge_object(g.edge(v2, v2)))
+            g.remove_edge(g.edge(v2, v2))
+        elif v3 != v1:
             g.add_edge(g.edge(v1, v3), g.edge_object(g.edge(v2, v3)))
     g.remove_vertex(v2)
     return True
