@@ -206,7 +206,8 @@ class GraphS(BaseGraph[int,Tuple[int,int]]):
             for v1 in vs:
                 self.nedges -= 1
                 del self.graph[v][v1]
-                del self.graph[v1][v]
+                if v != v1:
+                    del self.graph[v1][v]
             # remove the vertex
             del self.graph[v]
             del self.ty[v]
@@ -230,7 +231,8 @@ class GraphS(BaseGraph[int,Tuple[int,int]]):
         for s,t in edges:
             self.nedges -= 1
             del self.graph[s][t]
-            del self.graph[t][s]
+            if s != t:
+                del self.graph[t][s]
 
     def remove_edge(self, edge):
         self.remove_edges([edge])

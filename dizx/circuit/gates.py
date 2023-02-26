@@ -277,7 +277,7 @@ class Gate(object):
             mapper: TargetMapper[VT],
             t: VertexType.Type,
             l: int, r: int,
-            phase: Phase = CliffordPhase(settings.dim, 0, 0),
+            phase: Optional[Phase] = None,
             e: Edge = Edge(simple=1)) -> VT:
         v = g.add_vertex(t, mapper.to_qudit(l), r, phase)
         g.add_edge(g.edge(mapper.prev_vertex(l), v), e)
