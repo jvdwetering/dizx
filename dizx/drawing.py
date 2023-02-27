@@ -201,9 +201,10 @@ def draw_d3(
         ty = 3 if eo.type() == Edge.HadEdge else 4
         if ty == 4 and phase == '1':  # It is just a regular edge, so we are not gonna do anything fancy
             links.append({'source': str(s), 'target': str(t), 't':1})
-        else:  # We are going to add a dummy H-box like thing so that we don't have to draw multiple parallel wires
+        else:  # We are going to add a dummy H-box-like thing so that we don't have to draw multiple parallel wires
             x = (0.5*(g.row(s) + g.row(t))-minrow + 1) * scale
             y = (0.5*(g.qubit(s) + g.qubit(t))-minqub + 2) * scale
+            if phase == '1': phase = ''
             nodes.append({'name': name, 'x': x, 'y': y, 't': ty, 'phase': phase})
             links.append({'source':str(s), 'target': name, 't':1})
             links.append({'source':name, 'target': str(t), 't':1})

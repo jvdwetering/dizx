@@ -20,7 +20,7 @@ def to_gh(g: BaseGraph[VT, ET]) -> None:
 
 
 def is_graph_like(g: BaseGraph[VT, ET]) -> bool:
-    """Puts a ZX-diagram in graph-like form"""
+    """Checks if a ZX-diagram is graph-like"""
 
     # checks that all spiders are Z-spiders
     for v in g.vertices():
@@ -60,7 +60,7 @@ def is_graph_like(g: BaseGraph[VT, ET]) -> bool:
 
 
 def to_graph_like(g: BaseGraph[VT, ET]) -> None:
-    """Checks if a ZX-diagram is graph-like"""
+    """Puts a ZX-diagram in graph-like form"""
 
     # turn all red spiders into green spiders
     to_gh(g)

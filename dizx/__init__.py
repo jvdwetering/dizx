@@ -20,6 +20,7 @@ from .graph import Graph, Edge, Phase, CliffordPhase
 from .utils import VertexType, toggle_vertex, settings
 from .drawing import draw
 from .circuit import Circuit, gates, id
+from . import simplify
 
 if __name__ == '__main__':
     print("Please execute this as a module by running 'python -m dizx'")
