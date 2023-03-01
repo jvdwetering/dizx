@@ -59,7 +59,15 @@ class Phase(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def is_strictly_clifford(self) -> bool:
+        pass
+
+    @abc.abstractmethod
     def is_zero(self) -> bool:
+        pass
+
+    @abc.abstractmethod
+    def as_vector(self) -> tuple:
         pass
 
 
@@ -114,5 +122,11 @@ class CliffordPhase(Phase):
     def is_pure_clifford(self) -> bool:
         return self.x == 0
 
+    def is_strictly_clifford(self) -> bool:
+        return self.x == 0 and self.y != 0
+
     def is_zero(self) -> bool:
         return self.x == 0 and self.y == 0
+
+    def as_vector(self) -> tuple:
+        return self.x, self.y

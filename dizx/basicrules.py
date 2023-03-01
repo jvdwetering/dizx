@@ -1,4 +1,4 @@
-from . import Edge, Phase, CliffordPhase
+from . import Edge, CliffordPhase
 from .graph.base import BaseGraph, VT, ET
 from .utils import VertexType
 
