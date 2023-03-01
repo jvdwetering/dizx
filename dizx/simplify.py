@@ -78,16 +78,17 @@ def to_graph_like(g: BaseGraph[VT, ET]) -> None:
         # if there's no parallel edges, the function does nothing
         remove_parallel_edge_between_zs(g, *e)
 
+    # each Z-spider can only be connected to at most 1 I/O
+    unfuse_multi_boundary_connections(g)
+
     # ensure all I/O are connected to a Z-spider
     bs = [v for v in g.vertices() if g.type(v) == VertexType.BOUNDARY]
     for v in bs:
         # have to connect the (boundary) vertex to a Z-spider
-        ns = list(g.neighbors(v))
-        if len(ns) == 1 and g.type(ns[0]) == VertexType.BOUNDARY:
-            _add_vertices_before_boundary(g, v, ns[0])
-
-    # each Z-spider can only be connected to at most 1 I/O
-    unfuse_multi_boundary_connections(g)
+        [n] = list(g.neighbors(v))
+        if g.edge_object(g.edge(v, n)).is_had_edge()\
+                or g.type(n) == VertexType.BOUNDARY:
+            _add_vertices_before_boundary(g, v, n)
 
     # make drawings nice
     g.ensure_enough_distance()
@@ -104,7 +105,7 @@ def fuse_along_simple_edges(g):
         ns = [v for v in g.neighbors(z) if g.type(v) == VertexType.Z]
         fused_zs += [
             n for n in ns if
-            z_fuse(g,z,n)
+            z_fuse(g, z, n)
         ]
 
 
