@@ -123,7 +123,7 @@ class CliffordPhase(Phase):
         return self.x == 0
 
     def is_strictly_clifford(self) -> bool:
-        return self.x == 0 and self.y != 0
+        return self.y != 0
 
     def is_zero(self) -> bool:
         return self.x == 0 and self.y == 0
