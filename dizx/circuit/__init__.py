@@ -22,6 +22,7 @@ import numpy as np
 from .gates import Gate, gate_types, XPhase, ZPhase, NEG, X, Z, S, CZ, CX, SWAP, HAD, Measurement
 
 from ..graph.base import BaseGraph
+from ..utils import settings
 
 CircuitLike = Union['Circuit', Gate]
 
@@ -39,28 +40,32 @@ class Circuit(object):
     The methods in this class that convert a specification of a circuit into an instance of this class,
     generally do not check whether the specification is well-defined. If a bad input is given,
     the behaviour is undefined."""
-    def __init__(self, qudit_amount: int, name: str = '', dit_amount: Optional[int] = None) -> None:
+    def __init__(self, qudit_amount: int, dim: int = settings.dim, name: str = '', dit_amount: Optional[int] = None) -> None:
         self.qudits: int        = qudit_amount
+        self._dim = dim
         self.dits: int = 0 if dit_amount is None else dit_amount
         self.gates:  List[Gate] = []
         self.name:   str        = name
 
     ### BASIC FUNCTIONALITY
-
+    @property
+    def dim(self) -> int:
+        return self._dim
 
     def __str__(self) -> str:
-        return "Circuit({!s} qudits, {!s} dits, {!s} gates)".format(self.qudits,self.dits,len(self.gates))
+        return f"Circuit[{self.dim}]({self.qudits} qudits, {self.dits} dits," \
+               f" {self.gates} gates)"
 
     def __repr__(self) -> str:
         return str(self)
 
     def copy(self) -> 'Circuit':
-        c = Circuit(self.qudits, self.name, self.dits)
+        c = Circuit(self.qudits, self.dim, self.name, self.dits)
         c.gates = [g.copy() for g in self.gates]
         return c
 
     def adjoint(self) -> 'Circuit':
-        c = Circuit(self.qudits, self.name + 'Adjoint', self.dits)
+        c = Circuit(self.qudits, self.dim, self.name + 'Adjoint', self.dits)
         for g in reversed(self.gates):
             c.gates.append(g.to_adjoint())
         return c

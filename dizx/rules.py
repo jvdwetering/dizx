@@ -9,7 +9,8 @@ def check_pivoting_simplification(g: BaseGraph[VT, ET], v: VT, w: VT) -> bool:
 
     Note: this function assumes that the graph is graph-like.
     """
-    return g.type(v) == VertexType.Z and g.type(w) == VertexType.Z\
+    return v != w\
+        and g.type(v) == VertexType.Z and g.type(w) == VertexType.Z\
         and g.phase(v).is_pauli() and g.phase(w).is_pauli()\
         and g.edge_object(g.edge(v, w)).is_had_edge()\
         and all([g.type(n) == VertexType.Z for n in g.neighbors(v)])\
@@ -53,43 +54,47 @@ def pivoting_simplification(g: BaseGraph[VT, ET], v: VT, w: VT) -> bool:
     g.remove_vertex(v)
     g.remove_vertex(w)
 
-    def check_local_complementation_simplification(
-            g: BaseGraph[VT, ET], v: VT) -> bool:
-        """
-        Checks if the local complementation simplification can be applied.
+    return True
 
-        Note: this function assumes that the graph is graph-like.
-        """
+def check_local_complementation_simplification(
+        g: BaseGraph[VT, ET], v: VT) -> bool:
+    """
+    Checks if the local complementation simplification can be applied.
 
-        return g.type(v) == VertexType.Z and g.phase(v).is_strictly_clifford()\
-            and all([g.type(n) == VertexType.Z for n in g.neighbors(v)])
+    Note: this function assumes that the graph is graph-like.
+    """
 
-    def local_complementation_simplification(
-            g: BaseGraph[VT, ET], v: VT) -> bool:
-        if not check_local_complementation_simplification(g, v):
-            return False
-        vp = g.phase(v)
-        if not isinstance(vp, CliffordPhase):
-            raise ValueError(
-                "The implementation of local complementation is only "
-                "supported with CliffordPhase phases.")
+    return g.type(v) == VertexType.Z and g.phase(v).is_strictly_clifford()\
+        and all([g.type(n) == VertexType.Z for n in g.neighbors(v)])
 
-        z_inv = pow(vp.y, -1, g.dim)
-        ns = list(g.neighbors(v))
+def local_complementation_simplification(
+        g: BaseGraph[VT, ET], v: VT) -> bool:
+    if not check_local_complementation_simplification(g, v):
+        return False
+    vp = g.phase(v)
+    if not isinstance(vp, CliffordPhase):
+        raise ValueError(
+            "The implementation of local complementation is only "
+            "supported with CliffordPhase phases.")
 
-        for n in ns:
-            e = g.edge_object(g.edge(v, n)).had
-            g.add_to_phase(n, CliffordPhase(
-                dim=g.dim,
-                x=-z_inv * vp.x * e,
-                y=-z_inv * (e ** 2)
-            ))
+    z_inv = pow(vp.y, -1, g.dim)
+    ns = list(g.neighbors(v))
 
-        for i, n in enumerate(ns):
-            for m in ns[i + 1:]:
-                e_n = g.edge_object(g.edge(v, n)).had
-                e_m = g.edge_object(g.edge(v, m)).had
-                g.add_edge(g.edge(n, m),
-                           Edge.make(dim=g.dim, had=-z_inv * e_n * e_m))
+    for n in ns:
+        e = g.edge_object(g.edge(v, n)).had
+        g.add_to_phase(n, CliffordPhase(
+            dim=g.dim,
+            x=-z_inv * vp.x * e,
+            y=-z_inv * (e ** 2)
+        ))
 
-        g.remove_vertex(v)
+    for i, n in enumerate(ns):
+        for m in ns[i + 1:]:
+            e_n = g.edge_object(g.edge(v, n)).had
+            e_m = g.edge_object(g.edge(v, m)).had
+            g.add_edge(g.edge(n, m),
+                       Edge.make(dim=g.dim, had=-z_inv * e_n * e_m))
+
+    g.remove_vertex(v)
+
+    return True

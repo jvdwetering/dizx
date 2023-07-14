@@ -3,6 +3,7 @@ from typing import Optional
 
 from . import Edge
 from .graph.base import BaseGraph, VT, ET
+from .rules import local_complementation_simplification, pivoting_simplification
 from .utils import VertexType
 from .basicrules import x_color_change, _add_vertex_between, z_fuse,\
     remove_self_loop_on_z, remove_parallel_edge_between_zs
@@ -75,7 +76,7 @@ def to_graph_like(g: BaseGraph[VT, ET]) -> None:
 
     #  remove parallel edges
     for e in g.edges():
-        # if there's no parallel edges, the function does nothing
+        # if there are no parallel edges, the function does nothing
         remove_parallel_edge_between_zs(g, *e)
 
     # each Z-spider can only be connected to at most 1 I/O
@@ -152,3 +153,55 @@ def _add_z_neighbour_if_boundary(
         g.add_edge(g.edge(b, new), Edge(simple=1))
         return new
     return None
+
+def _apply_lc_amap(g: BaseGraph[VT, ET]) -> bool:
+    for v in g.vertices():
+        if local_complementation_simplification(g, v):
+            _apply_lc_amap(g)
+            return True
+    return False
+
+
+def _apply_pivot_amap(g: BaseGraph[VT, ET]):
+    vertices = list(g.vertices())
+    for i, v in enumerate(vertices):
+        for w in vertices[i + 1:]:
+            if pivoting_simplification(g, v, w):
+                _apply_pivot_amap(g)
+                return True
+    return False
+
+
+def to_ap_form(g: BaseGraph[VT, ET]) -> None:
+    to_graph_like(g)
+    changed = True
+    while changed:
+        changed = _apply_lc_amap(g) or _apply_pivot_amap(g)
+
+
+
+# def interior_clifford_simp(g: BaseGraph[VT,ET], quiet:bool=False, stats:Optional[Stats]=None) -> int:
+#     """Keeps doing the simplifications ``id_simp``, ``spider_simp``,
+#     ``pivot_simp`` and ``lcomp_simp`` until none of them can be applied anymore."""
+#     spider_simp(g, quiet=quiet, stats=stats)
+#     to_gh(g)
+#     i = 0
+#     while True:
+#         i1 = id_simp(g, quiet=quiet, stats=stats)
+#         i2 = spider_simp(g, quiet=quiet, stats=stats)
+#         i3 = pivot_simp(g, quiet=quiet, stats=stats)
+#         i4 = lcomp_simp(g, quiet=quiet, stats=stats)
+#         if i1+i2+i3+i4==0: break
+#         i += 1
+#     return i
+#
+# def clifford_simp(g: BaseGraph[VT,ET], quiet:bool=True, stats:Optional[Stats]=None) -> int:
+#     """Keeps doing rounds of :func:`interior_clifford_simp` and
+#     :func:`pivot_boundary_simp` until they can't be applied anymore."""
+#     i = 0
+#     while True:
+#         i += interior_clifford_simp(g, quiet=quiet, stats=stats)
+#         i2 = pivot_boundary_simp(g, quiet=quiet, stats=stats)
+#         if i2 == 0:
+#             break
+#     return i
