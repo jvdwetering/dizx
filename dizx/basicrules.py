@@ -41,17 +41,24 @@ def check_x_color_change(g: BaseGraph[VT, ET], v: VT) -> bool:
     return g.type(v) == VertexType.X
 
 
-def _add_vertex_between(
-        g: BaseGraph[VT, ET], ty: VertexType.Type,
-        v: VT, w: VT, edge_to_v: Edge, edge_to_w: Edge) -> VT:
+def _add_empty_vertex_between(
+        g: BaseGraph[VT, ET], v: VT, w: VT,
+        edge_to_v: Edge, edge_to_w: Edge) -> VT:
     new = g.add_vertex(
-        ty,
+        VertexType.Z,
         qubit=(g.qubit(w) + g.qubit(v)) / 2 or g.qubit(w),
         row=(g.row(w) + g.row(v)) / 2 or g.row(w)
     )
     g.add_edge(g.edge(v, new), edge_to_v)
     g.add_edge(g.edge(new, w), edge_to_w)
     return new
+
+
+def _set_empty_vertex_between(
+        g: BaseGraph[VT, ET], v: VT, w: VT,
+        edge_to_v: Edge, edge_to_w: Edge) -> VT:
+    g.remove_edge(g.edge(v, w))
+    return _add_empty_vertex_between(g, v, w, edge_to_v, edge_to_w)
 
 
 def _set_edge_x_color_change(g: BaseGraph[VT, ET], v: VT, neigh: VT) -> None:
@@ -64,7 +71,7 @@ def _set_edge_x_color_change(g: BaseGraph[VT, ET], v: VT, neigh: VT) -> None:
     if e.is_had_edge() and (
             neigh_type == VertexType.Z or neigh_type == VertexType.BOUNDARY):
         g.remove_edge(et)
-        _add_vertex_between(g, VertexType.Z, v, neigh, Edge(1), Edge(1))
+        _add_empty_vertex_between(g, v, neigh, Edge(1), Edge(1))
     elif e.is_had_edge() and neigh_type == VertexType.X:
         g.set_edge_object(et, Edge.make(g.dim, had=0, simple=-e.had))
     elif e.is_simple_edge():
@@ -118,7 +125,7 @@ def check_z_elim(g: BaseGraph[VT, ET], v: VT) -> bool:
         or (et1, et2) == (Edge.SimpleEdge, Edge.HadEdge)\
         or (
                 (et1, et2) == (Edge.HadEdge, Edge.HadEdge)
-                and edge1.had == -edge2.had
+                and (edge1.had + edge2.had) % g.dim == 0
         ) or (
                 (et1, et2) == (Edge.SimpleEdge, Edge.SimpleEdge)
                 and edge1.simple == pow(edge2.simple, -1, g.dim)
@@ -142,7 +149,7 @@ def z_elim(g: BaseGraph[VT, ET], v: VT) -> bool:
         g.add_edge(g.edge(v1, v2), Edge.make(
             g.dim, had=edge1.simple * edge2.had))
     elif (et1, et2) == (Edge.HadEdge, Edge.HadEdge)\
-            and edge1.had - edge2.had % g.dim == 0:
+            and (edge1.had + edge2.had) % g.dim == 0:
         g.add_edge(g.edge(v1, v2), Edge.make(g.dim, simple=1))
     elif (et1, et2) == (Edge.SimpleEdge, Edge.SimpleEdge)\
             and edge1.simple - pow(edge2.simple, -1, g.dim) % g.dim == 0\

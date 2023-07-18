@@ -3,9 +3,10 @@ from typing import Optional
 
 from . import Edge
 from .graph.base import BaseGraph, VT, ET
-from .rules import local_complementation_simplification, pivoting_simplification
+from .rules import local_complementation_simplification,\
+    pivoting_simplification, boundary_pivoting
 from .utils import VertexType
-from .basicrules import x_color_change, _add_vertex_between, z_fuse,\
+from .basicrules import x_color_change, _add_empty_vertex_between, z_fuse,\
     remove_self_loop_on_z, remove_parallel_edge_between_zs
 
 
@@ -20,10 +21,12 @@ def to_gh(g: BaseGraph[VT, ET]) -> None:
             x_color_change(g, v)
 
 
-def is_graph_like(g: BaseGraph[VT, ET]) -> bool:
-    """Checks if a ZX-diagram is graph-like"""
+def has_self_loop(g: BaseGraph[VT, ET]) -> bool:
+    return any(g.connected(v, v) for v in g.vertices())
 
-    # checks that all spiders are Z-spiders
+
+def is_gh(g: BaseGraph[VT, ET]) -> bool:
+    """Check if a graph has only Z spiders that are connected via H-edges"""
     for v in g.vertices():
         if g.type(v) not in [VertexType.Z, VertexType.BOUNDARY]:
             return False
@@ -32,32 +35,39 @@ def is_graph_like(g: BaseGraph[VT, ET]) -> bool:
         if not g.connected(v1, v2):
             continue
 
-        # Z-spiders are only connected via Hadamard edges
-        if g.type(v1) == VertexType.Z and g.type(v2) == VertexType.Z\
+        if g.type(v1) != VertexType.BOUNDARY and g.type(
+                v2) != VertexType.BOUNDARY\
                 and g.edge_object(g.edge(v1, v2)).is_simple_edge():
             return False
 
-    # no self-loops
-    for v in g.vertices():
-        if g.connected(v, v):
-            return False
+    return True
 
-    # every I/O is connected to a Z-spider
+
+def io_connections_are_graph_like(g: BaseGraph[VT, ET]) -> bool:
     bs = [v for v in g.vertices() if g.type(v) == VertexType.BOUNDARY]
     for b in bs:
-        if g.vertex_degree(b) != 1 or\
-                g.type(list(g.neighbors(b))[0]) != VertexType.Z:
+        [z] = list(g.neighbors(b))
+        b_neighbors =\
+            [n for n in g.neighbors(z) if g.type(n) == VertexType.BOUNDARY]
+        if len(b_neighbors) > 1:
             return False
+    return True
 
-    # every Z-spider is connected to at most one I/O
+
+def z_spiders_connected_to_single_io(g: BaseGraph[VT, ET]) -> bool:
     zs = [v for v in g.vertices() if g.type(v) == VertexType.Z]
     for z in zs:
-        b_neighbors = [n for n in g.neighbors(z)
-                       if g.type(n) == VertexType.BOUNDARY]
+        b_neighbors =\
+            [n for n in g.neighbors(z) if g.type(n) == VertexType.BOUNDARY]
         if len(b_neighbors) > 1:
             return False
 
-    return True
+
+def is_graph_like(g: BaseGraph[VT, ET]) -> bool:
+    """Checks if a ZX-diagram is graph-like"""
+    return is_gh(g)\
+        and not (has_self_loop(g))\
+        and io_connections_are_graph_like(g)
 
 
 def to_graph_like(g: BaseGraph[VT, ET]) -> None:
@@ -135,8 +145,8 @@ def _add_vertices_before_boundary(g: BaseGraph[VT, ET], v: VT, w: VT) -> None:
     z_2: VT = w if new_z_2 is None else new_z_2
 
     if e.is_simple_edge():
-        n = _add_vertex_between(g, VertexType.Z, z_1, z_2,
-                                Edge(had=(-1) % g.dim), Edge(had=1))
+        _add_empty_vertex_between(g, z_1, z_2, Edge(had=(-1) % g.dim),
+                                  Edge(had=1))
     else:  # e.is_had_edge():
         g.add_edge(g.edge(z_1, z_2), e)
 
@@ -154,54 +164,84 @@ def _add_z_neighbour_if_boundary(
         return new
     return None
 
-def _apply_lc_amap(g: BaseGraph[VT, ET]) -> bool:
+
+def simplify_lc(g: BaseGraph[VT, ET]) -> bool:
     for v in g.vertices():
         if local_complementation_simplification(g, v):
-            _apply_lc_amap(g)
+            simplify_lc(g)
             return True
     return False
 
 
-def _apply_pivot_amap(g: BaseGraph[VT, ET]):
+def simplify_pivot(g: BaseGraph[VT, ET]):
     vertices = list(g.vertices())
     for i, v in enumerate(vertices):
         for w in vertices[i + 1:]:
             if pivoting_simplification(g, v, w):
-                _apply_pivot_amap(g)
+                simplify_pivot(g)
                 return True
     return False
+
+
+def simplify_boundary_pivot(g: BaseGraph[VT, ET]):
+    vertices = list(g.vertices())
+    for i, v in enumerate(vertices):
+        for w in vertices[i + 1:]:
+            if boundary_pivoting(g, v, w) or boundary_pivoting(g, v, w):
+                simplify_boundary_pivot(g)
+                return True
+    return False
+
+
+def _internal_spiders(g: BaseGraph[VT, ET]) -> list[VT]:
+    return [
+        v for v in g.vertices() if
+        g.type(v) == VertexType.Z and not [n for n in g.neighbors(v) if
+                                           g.type(n) == VertexType.BOUNDARY]
+    ]
+
+
+def _boundary_spiders(g: BaseGraph[VT, ET]) -> list[VT]:
+    return [
+        v for v in g.vertices() if
+        g.type(v) == VertexType.Z and [n for n in g.neighbors(v) if
+                                       g.type(n) == VertexType.BOUNDARY]
+    ]
+
+
+def is_in_ap_form(g: BaseGraph[VT, ET]) -> bool:
+    internals = set(_internal_spiders(g))
+    return is_graph_like(g)\
+        and all(g.phase(v).is_pauli() for v in internals)\
+        and not any(
+            set(g.neighbors(v)).intersection(internals)
+            for v in internals
+        )
 
 
 def to_ap_form(g: BaseGraph[VT, ET]) -> None:
     to_graph_like(g)
     changed = True
     while changed:
-        changed = _apply_lc_amap(g) or _apply_pivot_amap(g)
+        changed = simplify_lc(g) or simplify_pivot(g)
+
+    # make drawings nice
+    g.ensure_enough_distance()
 
 
+def clifford_simp(g: BaseGraph[VT, ET]) -> None:
+    to_graph_like(g)
 
-# def interior_clifford_simp(g: BaseGraph[VT,ET], quiet:bool=False, stats:Optional[Stats]=None) -> int:
-#     """Keeps doing the simplifications ``id_simp``, ``spider_simp``,
-#     ``pivot_simp`` and ``lcomp_simp`` until none of them can be applied anymore."""
-#     spider_simp(g, quiet=quiet, stats=stats)
-#     to_gh(g)
-#     i = 0
-#     while True:
-#         i1 = id_simp(g, quiet=quiet, stats=stats)
-#         i2 = spider_simp(g, quiet=quiet, stats=stats)
-#         i3 = pivot_simp(g, quiet=quiet, stats=stats)
-#         i4 = lcomp_simp(g, quiet=quiet, stats=stats)
-#         if i1+i2+i3+i4==0: break
-#         i += 1
-#     return i
-#
-# def clifford_simp(g: BaseGraph[VT,ET], quiet:bool=True, stats:Optional[Stats]=None) -> int:
-#     """Keeps doing rounds of :func:`interior_clifford_simp` and
-#     :func:`pivot_boundary_simp` until they can't be applied anymore."""
-#     i = 0
-#     while True:
-#         i += interior_clifford_simp(g, quiet=quiet, stats=stats)
-#         i2 = pivot_boundary_simp(g, quiet=quiet, stats=stats)
-#         if i2 == 0:
-#             break
-#     return i
+    c1 = True
+    while c1:
+        c2 = True
+        while c2:
+            c2 = simplify_lc(g) or simplify_pivot(g)
+        c1 = simplify_boundary_pivot(g)
+
+    # make drawings nice
+    g.ensure_enough_distance()
+
+
+def is_in_gslc_form(g: BaseGraph[VT, ET]) -> None:
+    pass

@@ -1,6 +1,14 @@
-from . import Edge, CliffordPhase
+from . import Edge, CliffordPhase, Phase
+from .basicrules import _add_empty_vertex_between, _set_empty_vertex_between
 from .graph.base import BaseGraph, VT, ET
 from .utils import VertexType
+
+
+def _check_pivoting_base(g: BaseGraph[VT, ET], v: VT, w: VT) -> bool:
+    return v != w\
+        and g.type(v) == VertexType.Z and g.type(w) == VertexType.Z\
+        and g.phase(v).is_pauli() and g.phase(w).is_pauli()\
+        and g.edge_object(g.edge(v, w)).is_had_edge()
 
 
 def check_pivoting_simplification(g: BaseGraph[VT, ET], v: VT, w: VT) -> bool:
@@ -9,12 +17,27 @@ def check_pivoting_simplification(g: BaseGraph[VT, ET], v: VT, w: VT) -> bool:
 
     Note: this function assumes that the graph is graph-like.
     """
-    return v != w\
-        and g.type(v) == VertexType.Z and g.type(w) == VertexType.Z\
-        and g.phase(v).is_pauli() and g.phase(w).is_pauli()\
-        and g.edge_object(g.edge(v, w)).is_had_edge()\
+    return _check_pivoting_base(g, v, w)\
         and all([g.type(n) == VertexType.Z for n in g.neighbors(v)])\
         and all([g.type(n) == VertexType.Z for n in g.neighbors(w)])
+
+
+def check_boundary_pivot_simplification(
+        g: BaseGraph[VT, ET], v: VT, b: VT) -> bool:
+    """
+    Checks if the boundary pivot simplification can be applied.
+
+    Note: this function assumes that the graph is graph-like.
+
+    Args:
+        v: the vertex that only connects to Z spiders
+        b: the vertex connected to a boundary
+    """
+    return _check_pivoting_base(g, v, b)\
+        and all(g.type(n) == VertexType.Z for n in g.neighbors(v))\
+        and all(g.type(n) == VertexType.Z for n in g.neighbors(b)
+                if g.type(n) != VertexType.BOUNDARY)\
+        and any(g.type(n) == VertexType.BOUNDARY for n in g.neighbors(b))
 
 
 def pivoting_simplification(g: BaseGraph[VT, ET], v: VT, w: VT) -> bool:
@@ -48,13 +71,57 @@ def pivoting_simplification(g: BaseGraph[VT, ET], v: VT, w: VT) -> bool:
             f_2 = g.edge_object(g.edge(w, m)).had
             g.add_edge(g.edge(n, m), Edge.make(
                 dim=g.dim,
-                had=-epsilon_inv*(e_1 * f_2 + e_2 * f_1)
+                had=-epsilon_inv * (e_1 * f_2 + e_2 * f_1)
             ))
 
     g.remove_vertex(v)
     g.remove_vertex(w)
 
     return True
+
+
+def unfuse_phase(g: BaseGraph[VT, ET], v: VT) -> VT:
+    new = g.add_vertex(
+        VertexType.Z,
+        qubit=g.qubit(v),
+        row=g.row(v)
+    )
+    g.add_edge(g.edge(v, new), Edge(simple=1))
+    g.set_phase(new, g.phase(v))
+    g.set_phase(v, CliffordPhase(g.dim))
+    return new
+
+
+def graph_like_unfuse_phase(g: BaseGraph[VT, ET], v: VT) -> VT:
+    new = unfuse_phase(g, v)
+    _set_empty_vertex_between(g, v, new, Edge(had=1),
+                              Edge.make(g.dim, had=-1))
+    return new
+
+
+def boundary_pivoting(g: BaseGraph[VT, ET], v: VT, w: VT) -> bool:
+    """
+    Applies the boundary pivot simplification.
+
+    Note: this function assumes that the graph is graph-like.
+
+    Args:
+        v: the vertex that only connects to Z spiders
+        w: the vertex that is connected to a boundary
+    Returns:
+        Weather the simplification was applied
+    """
+    if not check_boundary_pivot_simplification(g, v, w):
+        return False
+
+    graph_like_unfuse_phase(g, w)
+    [b] = [n for n in g.neighbors(w) if g.type(n) == VertexType.BOUNDARY]
+
+    bn = _set_empty_vertex_between(g, w, b, Edge(simple=1), Edge(simple=1))
+    _set_empty_vertex_between(g, w, bn, Edge(had=1), Edge.make(g.dim, had=-1))
+
+    return pivoting_simplification(g, v, w)
+
 
 def check_local_complementation_simplification(
         g: BaseGraph[VT, ET], v: VT) -> bool:
@@ -66,6 +133,7 @@ def check_local_complementation_simplification(
 
     return g.type(v) == VertexType.Z and g.phase(v).is_strictly_clifford()\
         and all([g.type(n) == VertexType.Z for n in g.neighbors(v)])
+
 
 def local_complementation_simplification(
         g: BaseGraph[VT, ET], v: VT) -> bool:
