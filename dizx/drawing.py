@@ -22,6 +22,8 @@ import json
 import string
 import random
 from typing import Dict, List, Tuple, Optional, Iterable, Any
+
+from matplotlib import lines, path, patches
 from typing_extensions import Literal
 
 from IPython.display import display, HTML
@@ -29,6 +31,8 @@ from IPython.display import display, HTML
 from .utils import settings, VertexType, FloatInt
 from .graph.base import BaseGraph, VT, ET
 from .graph import Edge
+
+import matplotlib.pyplot as plt
 
 
 def draw(g: BaseGraph[VT,ET], labels: bool=False, **kwargs) -> Any:
@@ -81,7 +85,7 @@ def draw_matplotlib(
     for e in edges:
         sp = layout[g.edge_s(e)]
         tp = layout[g.edge_t(e)]
-        et = g.edge_type(e)
+        et = g.edge_t(e)
         n_row = vs_on_row.get(g.row(g.edge_s(e)), 0)
 
         
@@ -124,14 +128,11 @@ def draw_matplotlib(
             ax.add_patch(patches.Circle(p, 0.2, facecolor='green', edgecolor='black', zorder=1))
         elif t == VertexType.X:
             ax.add_patch(patches.Circle(p, 0.2, facecolor='red', edgecolor='black', zorder=1))
-        elif t == VertexType.H_BOX:
-            ax.add_patch(patches.Rectangle((p[0]-0.1, p[1]-0.1), 0.2, 0.2, facecolor='yellow', edgecolor='black'))
-            a_offset = 0.25
         else:
             ax.add_patch(patches.Circle(p, 0.1, facecolor='black', edgecolor='black', zorder=1))
 
         if labels: plt.text(p[0]+0.25, p[1]+0.25, str(v), ha='center', color='gray', fontsize=5)
-        if a: plt.text(p[0], p[1]-a_offset, phase_to_s(a, t), ha='center', color='blue', fontsize=8)
+        # if a: plt.text(p[0], p[1]-a_offset, phase_to_s(a, t), ha='center', color='blue', fontsize=8)
     
     if show_scalar:
         x = min((g.row(v) for v in g.vertices()), default = 0)

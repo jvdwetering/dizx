@@ -112,11 +112,14 @@ def z_fuse(g: BaseGraph[VT, ET], v1: VT, v2: VT) -> bool:
 
 
 def check_z_elim(g: BaseGraph[VT, ET], v: VT) -> bool:
+    if len(g.neighbors(v)) != 2:
+        return False
     v1, v2 = tuple(g.neighbors(v))
 
     edge1 = g.edge_object(g.edge(v1, v))
     edge2 = g.edge_object(g.edge(v, v2))
     et1, et2 = edge1.type(), edge2.type()
+    xb = (VertexType.X, VertexType.BOUNDARY)
 
     return g.vertex_degree(v) == 2\
         and g.phase(v).is_zero()\
@@ -128,8 +131,8 @@ def check_z_elim(g: BaseGraph[VT, ET], v: VT) -> bool:
                 and (edge1.had + edge2.had) % g.dim == 0
         ) or (
                 (et1, et2) == (Edge.SimpleEdge, Edge.SimpleEdge)
-                and edge1.simple == pow(edge2.simple, -1, g.dim)
-                and g.type(v1) == VertexType.X and g.type(v2) == VertexType.X
+                and (edge1.simple - pow(edge2.simple, -1, g.dim)) % g.dim == 0
+                and g.type(v1) in xb and g.type(v2) in xb
         )
 
 
@@ -141,6 +144,7 @@ def z_elim(g: BaseGraph[VT, ET], v: VT) -> bool:
     edge1 = g.edge_object(g.edge(v1, v))
     edge2 = g.edge_object(g.edge(v, v2))
     et1, et2 = edge1.type(), edge2.type()
+    xb = (VertexType.X, VertexType.BOUNDARY)
 
     if (et1, et2) == (Edge.HadEdge, Edge.SimpleEdge):
         g.add_edge(g.edge(v1, v2), Edge.make(
@@ -152,8 +156,8 @@ def z_elim(g: BaseGraph[VT, ET], v: VT) -> bool:
             and (edge1.had + edge2.had) % g.dim == 0:
         g.add_edge(g.edge(v1, v2), Edge.make(g.dim, simple=1))
     elif (et1, et2) == (Edge.SimpleEdge, Edge.SimpleEdge)\
-            and edge1.simple - pow(edge2.simple, -1, g.dim) % g.dim == 0\
-            and g.type(v1) == VertexType.X and g.type(v2) == VertexType.X:
+            and (edge1.simple - pow(edge2.simple, -1, g.dim)) % g.dim == 0\
+            and g.type(v1) in xb and g.type(v2) in xb:
         g.add_edge(g.edge(v1, v2), Edge.make(g.dim, simple=1))
     else:
         return False
