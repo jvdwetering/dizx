@@ -8,3 +8,5 @@ If you want to play around with DiZX, it is best if you start with trying the fu
 
 Note that DiZX is still firmly in Alpha. You might encounter many bugs. In particular, the ability to generate a tensor representation of a diagram is not yet implemented, 
 meaning that some of the rewrites might inadvertently be breaking the semantics.
+
+These ZX-calculus algorithms are presented in the paper "The Qupit Stabiliser ZX-travaganza: Simplified Axioms, Normal Forms and Graph-Theoretic Simplification" by Boldizsár Poór, Robert I. Booth, Titouan Carette, John van de Wetering, and Lia Yeh, which is available at [https://doi.org/10.4204/EPTCS.384.13](https://doi.org/10.4204/EPTCS.384.13).
