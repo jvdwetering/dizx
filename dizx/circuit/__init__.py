@@ -154,6 +154,14 @@ class Circuit(object):
                 c.add_gate(g)
         return c
 
+    def add_circuit(self, other: 'Circuit') -> None:
+        """Adds the gates of another circuit to this circuit.
+        If the other circuit has more qudits than this circuit, the number of qudits
+        in this circuit is updated to match."""
+        self.gates.extend(other.gates)
+        if other.qudits > self.qudits:
+            self.qudits = other.qudits
+
     ### OPERATORS
 
     def __iadd__(self, other: CircuitLike) -> 'Circuit':

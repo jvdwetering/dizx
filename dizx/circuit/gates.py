@@ -149,6 +149,7 @@ class Gate(object):
     qasm_name: ClassVar[str] = 'undefined'
     qasm_name_adjoint: ClassVar[str] = 'undefined'
     index = 0
+    repetitions: int = 1 # Allows multiple gates in a row to be represented by a single gate.
 
     def __init__(self, dim: int = settings.dim) -> None:
         self._dim = dim
@@ -158,6 +159,9 @@ class Gate(object):
         return self._dim
 
     def __str__(self) -> str:
+        name = self.name
+        if self.repetitions != 1:
+            name += f"^{self.repetitions}"
         attribs = []
         if hasattr(self, "control"):
             attribs.append(str(self.control))  # type: ignore # See issue #1424
@@ -167,8 +171,8 @@ class Gate(object):
         if hasattr(self, "phase") and self.printphase:  # type: ignore
             attribs.append("phase={!s}".format(self.phase))  # type: ignore
         return "{}{}({})".format(
-            self.name,
-            ("*" if (hasattr(self, "adjoint") and self.adjoint) else ""),
+            name,
+            ("*" if (hasattr(self, "adjoint") and self.adjoint and self.repetitions == 1) else ""),
             # type: ignore
             ",".join(attribs))
 
@@ -178,7 +182,7 @@ class Gate(object):
     def __eq__(self, other: object) -> bool:
         if type(self) != type(other):
             return False
-        for a in ["target", "control", "phase", "adjoint"]:
+        for a in ["target", "control", "phase", "adjoint", "repetitions"]:
             if hasattr(self, a):
                 if not hasattr(other, a):
                     return False
@@ -214,10 +218,26 @@ class Gate(object):
         return c @ c2
 
     def copy(self: Tvar) -> Tvar:
-        return copy.copy(self)
+        return copy.deepcopy(self)
+    
+    def merge(self, other) -> None:
+        """Merges this gate with another gate, typically used for combining gates in a circuit."""
+        if self.name != other.name:
+            raise ValueError("Cannot merge gates of different types: {} and {}".format(self.name, other.name))
+        if hasattr(self, "target") and hasattr(other, "target"):
+            if self.target != other.target:
+                raise ValueError("Cannot merge gates with different targets: {} and {}".format(self.target, other.target))
+        if hasattr(self, "control") and hasattr(other, "control"):
+            if self.control != other.control:
+                raise ValueError("Cannot merge gates with different controls: {} and {}".format(self.control, other.control))
+        if hasattr(self, "phase") and hasattr(other, "phase"):
+            self.phase += other.phase
+        
+        self.repetitions += other.repetitions
 
     def to_adjoint(self: Tvar) -> Tvar:
         g = self.copy()
+        g.repetitions = -g.repetitions
         if hasattr(g, "phase"):
             g.phase = -g.phase  # type: ignore
         if hasattr(g, "adjoint"):
@@ -235,7 +255,7 @@ class Gate(object):
         return g
 
     def to_basic_gates(self) -> List['Gate']:
-        return [self]
+        return [self] * self.repetitions
 
     def to_qasm(self) -> str:
         n = self.qasm_name
@@ -428,16 +448,21 @@ class HAD(Gate):
         q_mapper.advance_next_row(self.target)
 
 
-class CX(Gate):
+class GateWithControl(Gate):
+    """Base class for gates that have a control qudit."""
+    control: int = -1
+
+    def __init__(self, control: int, target: int, adjoint: bool = False) -> None:
+        super().__init__()
+        self.control = control
+        self.target = target
+        self.adjoint = adjoint
+        if adjoint: self.repetitions = -self.repetitions
+
+class CX(GateWithControl):
     name = 'CX'
     qasm_name = 'cx'
     qasm_name_adjoint = 'cxdg'
-
-    def __init__(
-            self, control: int, target: int, adjoint: bool = False) -> None:
-        self.target = target
-        self.control = control
-        self.adjoint = adjoint
 
     def to_basic_gates(self):
         return [HAD(self.target)] * 3 + [CZ(self.control, self.target),
@@ -458,16 +483,10 @@ class CX(Gate):
         g.scalar.add_power(1)
 
 
-class CZ(Gate):
+class CZ(GateWithControl):
     name = 'CZ'
     qasm_name = 'cz'
     qasm_name_adjoint = 'czdg'
-
-    def __init__(
-            self, control: int, target: int, adjoint: bool = False) -> None:
-        self.target = target
-        self.control = control
-        self.adjoint = adjoint
 
     def to_basic_gates(self):
         return [HAD(self.target)] * 2 + [CZ(self.control, self.target)] + [
@@ -485,13 +504,9 @@ class CZ(Gate):
         g.scalar.add_power(1)
 
 
-class SWAP(Gate):
+class SWAP(GateWithControl):
     name = 'SWAP'
     qasm_name = 'swap'
-
-    def __init__(self, control: int, target: int) -> None:
-        self.target = target
-        self.control = control
 
     def to_basic_gates(self):
         return [

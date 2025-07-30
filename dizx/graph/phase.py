@@ -107,6 +107,9 @@ class CliffordPhase(Phase):
                              "subtracted")
         return CliffordPhase(self.dim, self.x - other.x, self.y - other.y)
 
+    def __neg__(self) -> CliffordPhase:
+        return CliffordPhase(self.dim, -self.x, -self.y)
+    
     def __str__(self) -> str:
         return f"({self.x},{self.y})"
 
