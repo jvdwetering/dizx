@@ -14,6 +14,14 @@ class DAG:
         self.children.append(child)
         child.parents.append(self)
     
+    def remove_child(self, child: 'DAG') -> None:
+        """Remove a child node from the DAG."""
+        if child in self.children:
+            self.children.remove(child)
+            child.parents.remove(self)
+        else:
+            raise ValueError("Child not found in children list.")
+    
     def insert_between_child(self, new_node: 'DAG', child: Optional['DAG']=None) -> None:
         """Insert a new node between this node and a child node. If the child is None, it will just be added as a regular new child."""
         if child is None:
@@ -25,6 +33,45 @@ class DAG:
             new_node.add_child(child)
         else:
             raise ValueError("Child not found in children list.")
+    
+    def insert_single_qudit_gate_after(self, gate: Gate) -> None:
+        """Insert a new single-qudit gate after this node in the DAG.
+        Requires that both this DAG and the new_node have `not self.node is None`, so that it can check the qudit targets."""
+        if self.node is None:
+            raise ValueError("Both DAGs must have a node to insert after.")
+        is_two_qubit = isinstance(self.node, GateWithControl)
+        new_node = DAG(gate)
+        if is_two_qubit:
+            if self.node.target != gate.target and self.node.control != gate.target:
+                raise ValueError("Cannot insert a single-qudit gate with a different target qudit than the current gate,", self.node, gate)
+        elif self.node.target != gate.target:
+            raise ValueError("Cannot insert a gate with a different target qudit,", self.node, gate)
+        for child in self.children:
+            if child.node.target == gate.target or (isinstance(child, GateWithControl) and child.node.control == gate.target):
+                self.insert_between_child(new_node, child)
+                break
+        else:
+            self.add_child(new_node)
+        if is_two_qubit:
+            for child in self.children:
+                if child.node.target == gate.target or (isinstance(child, GateWithControl) and child.node.control == gate.target):
+                    self.remove_child(child)
+                    new_node.add_child(child)
+        
+        def insert_two_qudit_gate_after(self, gate: Gate) -> None:
+            """Insert a new two-qudit gate after this node in the DAG.
+            Requires that both this DAG and the new_node have `not self.node is None`, so that it can check the qudit targets.
+            We currently restrict to both gates having to act on the same two-qudits, so no three-qudit rewrites at the moment."""
+            if self.node is None:
+                raise ValueError("DAG must have a node to insert after.")
+            if not isinstance(self.node, GateWithControl) or not isinstance(gate, GateWithControl):
+                raise ValueError("Both gates must be two-qudit gates", self.node, gate)
+            if {self.node.target, self.node.control} != {gate.target, gate.control}:
+                raise ValueError("Cannot insert a two-qudit gate with different target and control qudits than the current gate,", self.node, gate)
+            new_node = DAG(gate)
+            for child in self.children:
+                self.remove_child(child)  # Remove the child from the current DAG
+                new_node.add_child(child)  # Add the child to the new node
     
     def merge(self, other: 'DAG') -> None:
         """Merge another DAG instance into this one. This assumes that the other DAG is a child of this one."""
@@ -50,7 +97,8 @@ class CliffordSimplifier:
     def __init__(self, circuit: Circuit) -> None:
         self.circuit = circuit.copy()
         self.create_dag()
-        self.circuit_list: list[Circuit] = [self.circuit] # Stores the intermediate steps of the simplification
+        self.circuit_list: list[Circuit] = [] # Stores the intermediate steps of the simplification
+        self.topological_sort() # Populates self.circuit_list with the initial circuit
 
     def create_dag(self) -> None:
         """Create a directed acyclic graph (DAG) from the circuit. This is a dependency graph
@@ -93,11 +141,13 @@ class CliffordSimplifier:
             """Recursively sorts the DAG, ensuring that all parents are visited before its added to the list."""
             results = False
             if all(p.node in visited for p in dag.parents if p.node is not None):
+                assert dag.node is not None, "DAG node must not be None"
                 if dag.node.index == 0:
-                    dag.node.index = len(sorted_gates) # This is needed to make all the gates 'unique' so that the equality check works correctly
+                    dag.node.index = len(sorted_gates)+1 # This is needed to make all the gates 'unique' so that the equality check works correctly
                 if dag.node is not None and dag.node not in sorted_gates:
-                    sorted_gates.append(dag.node)
-                    visited.append(dag.node)
+                    gate = dag.node
+                    sorted_gates.append(gate)
+                    visited.append(gate)
                     results = True
                 results = results or any(sort_step(child) for child in dag.children)
             return results
@@ -109,15 +159,18 @@ class CliffordSimplifier:
                     made_progress = True
             if not made_progress:
                 break
-
+        
         c = self.circuit.copy()
+        sorted_gates = [g.copy() for g in sorted_gates]
         c.gates = sorted_gates
         return c
     
-    def simple_optimize(self) -> Circuit:
+    def simple_optimize(self) -> bool:
         """Runs a simple optimization on the circuit, combining gates and removing identity gates."""
         success = False
+        loops = 0
         while True:
+            loops += 1
             success = success or self.combine_gates()
             success = success or self.remove_identity_gate()
             if success: 
@@ -127,8 +180,29 @@ class CliffordSimplifier:
             if success:
                 success = False
                 continue
+            success = self.push_double_hadamard()
+            if success:
+                success = False
+                continue
             break  # No more progress can be made
-        return self.circuit
+        return loops != 1 # Whether it applied at least one optimization step
+    
+    def single_qudit_optimize(self) -> bool:
+        """Runs a single-qudit optimization on the circuit, pushing Paulis and Hadamards."""
+        success = False
+        loops = 0
+        while True:
+            self.simple_optimize()
+            success = self.euler_decomp()
+            if success:
+                success = False
+                continue
+            success = self.euler_decomp2()
+            if success:
+                success = False
+                continue
+            break # No more progress can be made
+        return loops != 1 # Whether it applied at least one optimization step
 
     def combine_gates(self) -> bool:
         """Combines gates in the circuit to reduce the number of gates."""
@@ -322,6 +396,7 @@ class CliffordSimplifier:
     def push_double_hadamard(self) -> bool:
         """Tries to push a Hadamard^2 = NEG gate one step to the right in the circuit.
         Note that it does not push past Paulis in order for the full strategy to terminate."""
+        # TODO: Also do the case where there is a H^3 = H H^2, so that we only have to check H cases for all the other rewrites
         def try_push(dag: DAG) -> bool:
             if dag.node is not None and isinstance(dag.node, HAD) and dag.node.repetitions %2 == 0:
                 # It is a Hadamard so it should have at most one child
@@ -382,6 +457,123 @@ class CliffordSimplifier:
                     child.insert_between_child(DAG(new_z), child2)
                     return True
             # If we reach here, we didn't push the H^2 gate, so we try see if one of the children can push one
+
+            for child in dag.children:
+                if try_push(child):
+                    return True
+            return False
+        
+        success = try_push(self.dag)
+        if success:
+            self.circuit = self.topological_sort()
+            self.circuit_list.append(self.circuit)
+
+        return success
+    
+    def euler_decomp(self) -> bool:
+        """Tries to apply the substitution H;S;H -> S^-1;H;S^-1;X in some place in the circuit."""
+
+        def try_decomp(dag: DAG) -> bool:
+            """Tries to apply the substitution H;S;H -> S^-1;H;S^-1;X in the current DAG node."""
+            if dag.node is not None and isinstance(dag.node, HAD) and dag.node.repetitions % 4 == 1:
+                # It is a Hadamard so it should have at most one child
+                if len(dag.children) == 0:
+                    return False
+                assert len(dag.children) == 1
+                child = dag.children[0]
+                assert child.node is not None, "Child node must not be None"
+                if isinstance(child.node, S) and child.node.repetitions % self.circuit.dim == 1:
+                    if len(child.children) == 0:
+                        return False
+                    assert len(child.children) == 1, "S gate should have at most one child"
+                    grandchild = child.children[0]
+                    if isinstance(grandchild.node, HAD) and grandchild.node.repetitions % 4 == 1:
+                        # We have a H;S;H gate, so we can apply the substitution
+                        new_s = S(child.node.target)
+                        new_s.repetitions = -1
+                        new_s2 = S(child.node.target)
+                        new_s2.repetitions = -1
+                        new_h = HAD(child.node.target)
+                        new_x = X(child.node.target)
+                        dag.node = new_s
+                        child.node = new_h
+                        grandchild.node = new_x
+                        child.insert_between_child(DAG(new_s2), grandchild)
+                        return True
+            # If we reach here, we didn't apply the decomposition, so we try see if one of the children can push one
+
+            for child in dag.children:
+                if try_decomp(child):
+                    return True
+            return False
+
+        success = try_decomp(self.dag)
+        if success:
+            self.circuit = self.topological_sort()
+            self.circuit_list.append(self.circuit)
+
+        return success
+    
+    def euler_decomp2(self) -> bool:
+        """Tries to apply the substitution S^-1;H;S^-1 -> H;S;H;X^{-1}, but only if there is a H at the start, in order to avoid a loop with euler_decomp()."""
+
+        def try_decomp(dag: DAG) -> bool:
+            """Tries to apply the substitution H;S;H -> S^-1;H;S^-1;X in the current DAG node."""
+            if dag.node is not None and isinstance(dag.node, S) and (dag.node.repetitions+1) % self.circuit.dim == 0: # It is S^{-1}
+                # It is an S so it should have at most one child and one parent
+                if len(dag.children) == 0:
+                    return False
+                assert len(dag.children) == 1
+                child = dag.children[0]
+                print("We have a potential match with", dag.node, "followed by", child.node)
+                assert child.node is not None, "Child node must not be None"
+                if len(dag.parents) ==0 or not isinstance(dag.parents[0].node, HAD):
+                    pass
+                elif isinstance(child.node, HAD) and child.node.repetitions % 4 == 1:
+                    if len(child.children) == 0:
+                        return False
+                    assert len(child.children) == 1, "H gate should have at most one child"
+                    grandchild = child.children[0]
+                    if isinstance(grandchild.node, S) and (grandchild.node.repetitions+1) % self.circuit.dim == 0: # It is S^{-1}
+                        # We have a S^{-1};H;S^{-1} gate, so we can apply the substitution
+                        new_s = S(child.node.target)
+                        new_h = HAD(child.node.target)
+                        new_h2 = HAD(child.node.target)
+                        new_x = X(child.node.target)
+                        new_x.repetitions = -1
+                        dag.node = new_h
+                        child.node = new_s
+                        grandchild.node = new_x
+                        child.insert_between_child(DAG(new_h2), grandchild)
+                        return True
+            # If we reach here, we didn't apply the decomposition, so we try see if one of the children can push one
+
+            for child in dag.children:
+                if try_decomp(child):
+                    return True
+            return False
+
+        success = try_decomp(self.dag)
+        if success:
+            self.circuit = self.topological_sort()
+            self.circuit_list.append(self.circuit)
+
+        return success
+    
+    def push_S_gate(self) -> bool:
+        """Tries to push an S gate one step to the right in the circuit."""
+        def try_push(dag: DAG) -> bool:
+            if dag.node is not None and isinstance(dag.node, S):
+                # It is an S so it should have at most one child
+                if len(dag.children) == 0:
+                    return False
+                assert len(dag.children) == 1
+                child = dag.children[0]
+                assert child.node is not None, "Child node must not be None"
+                if isinstance(child.node, CZ):
+                    # We can push the S gate through a CZ gate
+                    child.insert_single_qudit_gate_after(dag.node.copy())
+            # If we reach here, we didn't push the S gate, so we try see if one of the children can push one
 
             for child in dag.children:
                 if try_push(child):
