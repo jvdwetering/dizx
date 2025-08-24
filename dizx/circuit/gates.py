@@ -341,9 +341,10 @@ class Z(ZPhase):
     qasm_name_adjoint = 'zdg'
     printphase = False
 
-    def __init__(self, target: int, adjoint: bool = False) -> None:
+    def __init__(self, target: int, adjoint: bool = False, repetitions: int = 1) -> None:
         super().__init__(target, phase=CliffordPhase(settings.dim, 1, 0))
         self.adjoint = adjoint
+        self.repetitions = repetitions * (-1 if adjoint else 1)
 
     def to_basic_gates(self):
         return [Z(self.target)] * (settings.dim - 1) if self.adjoint else [
@@ -356,9 +357,10 @@ class S(ZPhase):
     qasm_name_adjoint = 'sdg'
     printphase = False
 
-    def __init__(self, target: int, adjoint: bool = False) -> None:
+    def __init__(self, target: int, adjoint: bool = False, repetitions: int = 1) -> None:
         super().__init__(target, CliffordPhase(settings.dim, 0, 1))
         self.adjoint = adjoint
+        self.repetitions = repetitions * (-1 if adjoint else 1)
 
     def to_basic_gates(self):
         return [S(self.target)] * (settings.dim - 1) if self.adjoint else [
@@ -416,9 +418,10 @@ class X(Gate):
     qasm_name_adjoint = 'xdg'
     printphase = False
 
-    def __init__(self, target: int, adjoint: bool = False) -> None:
+    def __init__(self, target: int, adjoint: bool = False, repetitions: int=1) -> None:
         self.target = target
         self.adjoint = adjoint
+        self.repetitions = repetitions * (-1 if adjoint else 1)
 
     def to_basic_gates(self):
         return [HAD(self.target)] * 3 + [Z(self.target),
@@ -436,6 +439,7 @@ class HAD(Gate):
     def __init__(self, target: int, adjoint: bool = False) -> None:
         self.target = target
         self.adjoint = adjoint
+        if adjoint: self.repetitions = -1
 
     def to_basic_gates(self):
         return [HAD(self.target)] * 3 if self.adjoint else [HAD(self.target)]
