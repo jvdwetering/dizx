@@ -21,7 +21,7 @@ quantum gates for use in the Circuit class.
 
 import copy
 import math
-from typing import Dict, List, Optional, Type, ClassVar, TypeVar, Generic, Set
+from typing import Dict, List, Optional, Type, ClassVar, TypeVar, Generic, Set, TYPE_CHECKING
 from ..graph.phase import Phase, CliffordPhase
 from ..graph.edge import Edge
 from ..utils import settings
@@ -32,6 +32,8 @@ from ..graph.base import BaseGraph, VT, ET
 # We need this type variable so that the subclasses of Gate return the correct type for functions like copy()
 Tvar = TypeVar('Tvar', bound='Gate')
 
+if TYPE_CHECKING:
+    from . import Circuit
 
 class TargetMapper(Generic[VT]):
     """
@@ -202,20 +204,29 @@ class Gate(object):
                 [qudits, self.control])  # type: ignore # See issue #1424
         return qudits
 
-    def __add__(self, other):
+    def __add__(self, other) -> "Circuit":
         from . import Circuit
         c = Circuit(self._max_target() + 1)
         c.add_gate(self)
         c += other
         return c
 
-    def __matmul__(self, other):
+    def __matmul__(self, other) -> "Circuit":
         from . import Circuit
         c = Circuit(self._max_target() + 1)
         c.add_gate(self)
         c2 = Circuit(other._max_target() + 1)
         c2.add_gate(other)
         return c @ c2
+    
+    def __pow__(self: Tvar, num: int) -> Tvar:
+        g = self.copy()
+        g.repetitions = self.repetitions * num
+        return g
+    
+    def __xor__(self: Tvar, num: int) -> Tvar:
+        """Alias for g**power."""
+        return self**num
 
     def copy(self: Tvar) -> Tvar:
         return copy.deepcopy(self)
