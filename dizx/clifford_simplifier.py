@@ -1,4 +1,8 @@
 from typing import Optional, List
+
+import ipywidgets as widgets
+from IPython.display import display, clear_output
+
 from .circuit import Circuit
 from .circuit.gates import CZ, CX, SWAP, HAD, Z, X, S, NEG, Gate, GateWithControl
 from . import symplectic
@@ -269,6 +273,10 @@ class CliffordSimplifier:
             mat2 = self.circuit_list[-2].to_symplectic_matrix()
             if symplectic.compare_matrices(mat1, mat2, self.circuit.dim):
                 raise SemanticsException("Semantics were not preserved by the last rewrite applied")
+    
+    def display_widget(self) -> None:
+        w = StepperWidget(self)
+        w.show()
     
     def simple_optimize(self) -> bool:
         """Runs a simple optimization on the circuit, combining gates, removing identity gates,
@@ -791,3 +799,66 @@ class CliffordSimplifier:
             self.update_circuit("Push SWAP")
         
         return success
+    
+
+class StepperWidget:
+    """Helper class for displaying an IPyWidget for stepping through all the rewrite steps in the circuit.
+    Call .show() in a Jupyter notebook cell to display."""
+    def __init__(self, circuitsimp: CliffordSimplifier):
+        self.obj = circuitsimp
+        self.index = 0
+        self.max_index = len(self.obj.circuit_list) - 1
+        
+        # Slider to move through steps
+        self.slider = widgets.IntSlider(
+            value=0,
+            min=0,
+            max=self.max_index,
+            step=1,
+            description='Step:',
+            continuous_update=False
+        )
+        
+        # Buttons
+        self.prev_button = widgets.Button(description="Previous")
+        self.next_button = widgets.Button(description="Next")
+        
+        # Output area
+        self.output = widgets.Output()
+        
+        # Wire up events
+        self.slider.observe(self.on_slider_change, names='value')
+        self.prev_button.on_click(self.on_prev)
+        self.next_button.on_click(self.on_next)
+        
+        # Layout
+        controls = widgets.HBox([self.prev_button, self.next_button, self.slider])
+        self.widget = widgets.VBox([controls, self.output])
+        
+        self.update_display()
+    
+    def on_slider_change(self, change):
+        self.index = change['new']
+        self.update_display()
+    
+    def on_prev(self, b):
+        if self.index > 0:
+            self.index -= 1
+            self.slider.value = self.index
+    
+    def on_next(self, b):
+        if self.index < self.max_index:
+            self.index += 1
+            self.slider.value = self.index
+    
+    def update_display(self):
+        with self.output:
+            clear_output(wait=True)
+            print("Step done:", self.obj.steps_done[self.index] if self.index != self.max_index else "Final")
+            print("Circuit:")
+            print(self.obj.circuit_list[self.index])
+            print("DAG:")
+            print(self.obj.dags[self.index])
+    
+    def show(self):
+        display(self.widget)

@@ -1,0 +1,30 @@
+\begin{tikzpicture}
+	\begin{pgfonlayer}{nodelayer}
+	\node [style=cnot ctrl] (0) at (2, 0.0) {};
+	\node [style=cnot ctrl] (1) at (2, 1.5) {};
+	\node [style=gate] (2) at (4, 1.5) {$H$};
+	\node [style=gate] (3) at (2, 3.0) {$S$};
+	\node [style=gate] (4) at (6, 1.5) {$A_{a, b}$};
+	\node [style=gate] (5) at (8, 1.5) {$C_{1, 2}$};
+	\node [style=cnot ctrl] (6) at (10, 0.0) {};
+	\node [style=cnot ctrl] (7) at (10, 1.5) {};
+	\node [style=cnot ctrl] (8) at (12, 1.5) {};
+	\node [style=cnot ctrl] (9) at (12, 3.0) {};
+	\node [style=medium box] (10) at (14, 0.75) {$B_{c+2, d}$};
+	\node [style=none] (11) at (0, 0.0) {};
+	\node [style=none] (12) at (14, 0.0) {};
+	\node [style=none] (13) at (0, 1.5) {};
+	\node [style=none] (14) at (14, 1.5) {};
+	\node [style=none] (15) at (0, 3.0) {};
+	\node [style=none] (16) at (14, 3.0) {};
+	\end{pgfonlayer}
+	\begin{pgfonlayer}{edgelayer}
+	\draw (0) to (1);
+	\draw (6) to (7);
+	\draw (8) to (9);
+	\draw (11) to (12);
+	\draw (13) to (14);
+	\draw (15) to (16);
+	\end{pgfonlayer}
+\end{tikzpicture}
+
