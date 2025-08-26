@@ -22,6 +22,7 @@ import numpy as np
 from .gates import Gate, gate_types, XPhase, ZPhase, NEG, X, Z, S, CZ, CX, SWAP, HAD, Measurement
 
 from ..graph.base import BaseGraph
+from .. import symplectic
 from ..utils import settings
 
 CircuitLike = Union['Circuit', Gate]
@@ -237,6 +238,33 @@ class Circuit(object):
         for g in self.gates:
             s += g.to_qasm() + "\n"
         return s
+    
+    def to_symplectic_matrix(self) -> symplectic.Matrix:
+        """Calculates the symplectic representation of a Circuit c. Only supports Clifford gates."""
+        qudits = self.qudits
+        mat = symplectic.ID(qudits)
+
+        for g in self.gates:
+            if isinstance(g, (Z, X)):
+                continue # Pauli gates are identities in the symplectic representation, so we can ignore them
+            elif isinstance(g, S):
+                m = symplectic.S(g.target, qudits, reps=g.repetitions)
+            elif isinstance(g, HAD):
+                m = symplectic.H(g.target, qudits, reps=g.repetitions)
+            elif isinstance(g, CX):
+                m = symplectic.CX(g.control,g.target,qudits,reps=g.repetitions)
+            elif isinstance(g, CZ):
+                m = symplectic.CZ(g.control,g.target,qudits,reps=g.repetitions)
+            elif isinstance(g, SWAP):
+                if g.repetitions % 2 == 0: continue
+                m = symplectic.SWAP(g.control,g.target,qudits)
+            else:
+                raise ValueError("Unsupported gate", str(g))
+            mat = m*mat # We multiply this way since circuit order goes the opposite direction of matrix multiplication order
+        
+        return mat
+            
+            
 
 def id(n: int) -> Circuit:
     return Circuit(n)

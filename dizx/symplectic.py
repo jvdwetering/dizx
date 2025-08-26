@@ -5,8 +5,6 @@ The symplectic matrices are constructed according to the order (x1,z1,x2,z2,...)
 
 from sympy import symbols, groebner, Matrix, eye, Symbol
 
-from .circuit import Circuit, gates
-
 Hmat = Matrix([[0,1],[-1,0]])
 H2mat = Matrix([[-1,0],[0,-1]])
 Hinvmat = Matrix([[0,-1],[1,0]])
@@ -19,7 +17,8 @@ SWAPmat = Matrix([
 
 def Smat(rep):
     """Create a matrix representing `rep` repetitions of the S gate."""
-    return Matrix([[1,0],[rep,1]])
+    return Matrix([[1  ,0],
+                   [rep,1]])
 
 def CXmat(rep):
     return Matrix([
@@ -31,9 +30,9 @@ def CXmat(rep):
 def CZmat(rep):# TODO: check minus sign
     return Matrix([
                 [1  ,0,0  ,0],
-                [0  ,1,rep,0],
+                [0  ,1,-rep,0],
                 [0  ,0,1  ,0],
-                [rep,0,0  ,1]])
+                [-rep,0,0  ,1]])
 
 def embed_block(block, n, mapping):
     """
@@ -122,30 +121,8 @@ def reduce_matrix(M, params: list[tuple[Symbol,Symbol]]):
         reduced_entries.append(newrow)
     return Matrix(reduced_entries)
 
-
-def circuit_to_matrix(c: Circuit) -> Matrix:
-    """Calculates the symplectic representation of a Circuit c. Only supports Clifford gates."""
-    qudits = c.qudits
-    mat = ID(qudits)
-
-    for g in c.gates:
-        if isinstance(g, (gates.Z, gates.X)):
-            continue # Pauli gates are identities in the symplectic representation, so we can ignore them
-        elif isinstance(g, gates.S):
-            m = S(g.target, qudits, reps=g.repetitions)
-        elif isinstance(g, gates.HAD):
-            m = H(g.target, qudits, reps=g.repetitions)
-        elif isinstance(g, gates.CX):
-            m = CX(g.control,g.target,qudits,reps=g.repetitions)
-        elif isinstance(g, gates.CZ):
-            m = CZ(g.control,g.target,qudits,reps=g.repetitions)
-        elif isinstance(g, gates.SWAP):
-            if g.repetitions % 2 == 0: continue
-            m = SWAP(g.control,g.target,qudits)
-        else:
-            raise ValueError("Unsupported gate", str(g))
-        mat = m*mat # We multiply this way since circuit order goes the opposite direction of matrix multiplication order
-    
-    return mat
-            
-            
+def compare_matrices(m1: Matrix, m2: Matrix, modulus: int = 0):
+    if modulus != 0:
+        m1 = modulo_matrix(m1,modulus)
+        m2 = modulo_matrix(m2,modulus)
+    return m1 == m2
