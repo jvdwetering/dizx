@@ -65,10 +65,41 @@ class DAG:
         for child in self.children:
             child.refresh_ancestors()
     
+    def find_first_descendant_on_qudit(self, index:int) -> Optional['DAG']:
+        """Finds the first DAG among the children and grandchildren whose node has a target or control equal to index.
+        Needed if we want to inject for instance a single-qudti gate after the current two-qudit gate.
+        This is only really meaningful if self.node has a target or control equal to index."""
+        candidates: list['DAG'] = []
+        for child in self.children:
+            if child.node is None: continue
+            g = child.node
+            if g.target == index or isinstance(g,GateWithControl) and g.control == index:
+                return child
+            candidate = child.find_first_descendant_on_qudit(index)
+            if candidate is not None: candidates.append(candidate)
+        
+        if not candidates: return None
+        candidate = candidates[0]
+        if len(candidates) == 1: return candidate
+        for can in candidates[1:]:
+            if candidate in can.ancestors:
+                candidate = can
+        return candidate
+    
     def insert_between_child(self, new_node: 'DAG', child: Optional['DAG']=None) -> None:
-        """Insert a new node between this node and a child node. If the child is None, it will just be added as a regular new child."""
+        """Insert a new node between this node and a child node. If the child is None, it will just be added as a regular new child,
+        and it will look for ancestors that that child should be the parent of (if any)."""
         if child is None:
+            desc_target = self.find_first_descendant_on_qudit(new_node.node.target)
+            if isinstance(new_node.node,GateWithControl):
+                desc_control = self.find_first_descendant_on_qudit(new_node.node.control)
+            else:
+                desc_control = None
             self.add_child(new_node)
+            if desc_target:
+                new_node.add_child(desc_target)
+            if desc_control: # TODO: Actually figure out what needs to happen if we add a two-qudit gate.
+                new_node.add_child(desc_control)
         elif child in self.children:
             self.children.remove(child)
             child.parents.remove(self)
@@ -93,7 +124,7 @@ class DAG:
                 self.insert_between_child(new_node, child)
                 break
         else:
-            self.add_child(new_node)
+            self.insert_between_child(new_node)
         if is_two_qubit:
             for child in self.children:
                 if isinstance(child.node, GateWithControl) and (child.node.target == gate.target or child.node.control == gate.target):
@@ -153,6 +184,20 @@ class DAG:
             for child in other.children:
                 child.parents.remove(other)
                 self.add_child(child)
+            other.parents.remove(self)
+            if len(other.parents) > 0: # Only possible if other is a two-qubit gate
+                # The parents of other should definitely be our parents, since other was a child
+                # However, our current parents might no longer be valid, so we have to check that
+
+                # I think this is the right condition: it should not be a parent if any other of our new parents is a direct child of it
+                # This happens precisely when the ancestor set is a superset
+                parents_to_remove = [p for p in self.parents if any(p2.ancestors.issuperset(p.ancestors) for p2 in other.parents)]
+                for p in parents_to_remove:
+                    p.remove_child(self)
+                for p in other.parents:
+                    p.children.remove(other)
+                    if p not in self.parents:
+                        p.add_child(self)
             other.children.clear()
             other.parents.clear()
         else:
@@ -185,6 +230,7 @@ class CliffordSimplifier:
         self.create_dag()
         self.topological_sort() # Populates self.circuit_list with the initial circuit
         self.check_semantics_each_step = False
+        self.verbose = False
 
     def create_dag(self) -> None:
         """Create a directed acyclic graph (DAG) from the circuit. This is a dependency graph
@@ -267,6 +313,9 @@ class CliffordSimplifier:
         self.circuit = self.topological_sort()
         self.circuit_list.append(self.circuit)
         self.steps_done.append(description)
+        if self.verbose:
+            print(description)
+            print(self.circuit)
         self.dags.append(self.dag.copy())
         if self.check_semantics_each_step:
             mat1 = self.circuit_list[-1].to_symplectic_matrix()
@@ -322,9 +371,11 @@ class CliffordSimplifier:
             if dag.node is not None and len(dag.children) == 1:
                 child = dag.children[0]
                 if child.node is not None and child.node.name == dag.node.name:
-                    dag.node.merge(child.node)  # Combines the two gates into one
-                    dag.merge(child)
-                    return True
+                    if not isinstance(dag.node, GateWithControl) or (
+                        dag.node.target == child.node.target and dag.node.control == child.node.control):
+                        dag.node.merge(child.node)  # Combines the two gates into one
+                        dag.merge(child)
+                        return True
             for child in dag.children:
                 if try_merge(child):
                     return True
@@ -415,58 +466,66 @@ class CliffordSimplifier:
                     control = child.node.control
                     control_child = None
                     target_child = None
-                    for child2 in child.children:
-                        if (child2.node is not None and child2.node.target == control 
-                            or isinstance(child2.node, GateWithControl) and child2.node.control == control):
-                            control_child = child2
-                        if (child2.node is not None and child2.node.target == target or 
-                            isinstance(child2.node, GateWithControl) and child2.node.control == target):
-                            target_child = child2
-                    double_child = control_child is not None and control_child is target_child and  control_child is not target_child
+                    print(f"Pushing {dag.node} through {child.node}")
+                    for grandchild in child.children:
+                        if (grandchild.node is not None and grandchild.node.target == control 
+                            or isinstance(grandchild.node, GateWithControl) and grandchild.node.control == control):
+                            control_child = grandchild
+                        if (grandchild.node is not None and grandchild.node.target == target or 
+                            isinstance(grandchild.node, GateWithControl) and grandchild.node.control == target):
+                            target_child = grandchild
+                    # double_grandchild = control_child is not None and control_child is target_child and  control_child is not target_child
                     two_qubit_gate = child.node.copy()
                     pauli = dag.node.copy()
-                    dag.merge(child) # Remove the child node
                     dag.node = two_qubit_gate # Put the two-qubit gate in place of the Pauli
+                    dag.merge(child) # Remove the child node
+                    print("Updated the dag, it is now: ", str(dag))
                     if isinstance(child.node, SWAP): # We assume the SWAP only occurs as a single repetition
                         new_target = target if control == q else control
                         pauli.target = new_target
-                        dag.insert_between_child(DAG(pauli), target_child if new_target == target else control_child)
-                        if double_child: # The child is on both the target and control, so it should still be a child of the SWAP
-                            assert control_child is not None
-                            dag.add_child(control_child)
+                        dag.insert_single_qudit_gate_after(pauli)
+                        # dag.insert_between_child(DAG(pauli), target_child if new_target == target else control_child)
+                        # if double_grandchild: # The child is on both the target and control, so it should still be a child of the SWAP
+                        #     assert control_child is not None
+                        #     dag.add_child(control_child)
                         return True
                     elif isinstance(child.node, CZ):
                         if isinstance(pauli, Z): # We can just push the Z gate through the CZ
-                            dag.insert_between_child(DAG(pauli), control_child if control == q else target_child)
-                            if double_child: # The child is on both the target and control, so it should still be a child of the CZ
-                                assert control_child is not None
-                                dag.add_child(control_child)
+                            dag.insert_single_qudit_gate_after(pauli)
+                            # dag.insert_between_child(DAG(pauli), control_child if control == q else target_child)
+                            # if double_grandchild: # The child is on both the target and control, so it should still be a child of the CZ
+                            #     assert control_child is not None
+                            #     dag.add_child(control_child)
                         elif isinstance(pauli, X): # We get a new Z gate in between
                             new_target = target if control == q else control
                             new_z = Z(new_target)
                             new_z.repetitions = pauli.repetitions * two_qubit_gate.repetitions
-                            node_old = DAG(pauli)
-                            node_new = DAG(new_z)
-                            if not double_child:
-                                dag.insert_between_child(node_new, target_child if new_target == target else control_child)
-                                dag.insert_between_child(node_old, control_child if new_target == target else target_child)
-                            else:
-                                assert control_child is not None
-                                dag.children.remove(control_child)
-                                control_child.parents.remove(dag)
-                                dag.add_child(node_new)
-                                dag.add_child(node_old)
-                                node_old.add_child(control_child)
-                                node_new.add_child(control_child)
+                            # node_old = DAG(pauli)
+                            # node_new = DAG(new_z)
+                            dag.insert_single_qudit_gate_after(pauli)
+                            dag.insert_single_qudit_gate_after(new_z)
+                            # if not double_grandchild:
+                            #     dag.insert_between_child(node_new, target_child if new_target == target else control_child)
+                            #     dag.insert_between_child(node_old, control_child if new_target == target else target_child)
+                            # else:
+                            #     assert control_child is not None
+                            #     dag.children.remove(control_child)
+                            #     control_child.parents.remove(dag)
+                            #     dag.add_child(node_new)
+                            #     dag.add_child(node_old)
+                            #     node_old.add_child(control_child)
+                            #     node_new.add_child(control_child)
                         return True
                     elif isinstance(child.node, CX):
                         is_on_control = child.node.control == q
                         if ((is_on_control and isinstance(pauli, Z)) or 
                             (not is_on_control and isinstance(pauli, X))): # In these cases we can just commute the Pauli through the CX
-                            dag.insert_between_child(DAG(pauli), control_child if control == q else target_child)
-                            if double_child: # The child is on both the target and control, so it should still be a child of the CX
-                                assert control_child is not None
-                                dag.add_child(control_child)
+                            dag.insert_single_qudit_gate_after(pauli)
+
+                            # dag.insert_between_child(DAG(pauli), control_child if control == q else target_child)
+                            # if double_grandchild: # The child is on both the target and control, so it should still be a child of the CX
+                            #     assert control_child is not None
+                            #     dag.add_child(control_child)
                         else:
                             # We either have a Z on the target or an X on the control
                             new_target = target if is_on_control else control
@@ -474,19 +533,21 @@ class CliffordSimplifier:
                             new_pauli.repetitions = pauli.repetitions * two_qubit_gate.repetitions
                             if isinstance(new_pauli, Z):
                                 new_pauli.repetitions = -new_pauli.repetitions
-                            node_old = DAG(pauli)
-                            node_new = DAG(new_pauli)
-                            if not double_child:
-                                dag.insert_between_child(node_new, target_child if new_target == target else control_child)
-                                dag.insert_between_child(node_old, control_child if new_target == target else target_child)
-                            else:
-                                assert control_child is not None
-                                dag.children.remove(control_child)
-                                control_child.parents.remove(dag)
-                                dag.add_child(node_new)
-                                dag.add_child(node_old)
-                                node_old.add_child(control_child)
-                                node_new.add_child(control_child)
+                            dag.insert_single_qudit_gate_after(pauli)
+                            dag.insert_single_qudit_gate_after(new_pauli)
+                            # node_old = DAG(pauli)
+                            # node_new = DAG(new_pauli)
+                            # if not double_grandchild:
+                            #     dag.insert_between_child(node_new, target_child if new_target == target else control_child)
+                            #     dag.insert_between_child(node_old, control_child if new_target == target else target_child)
+                            # else:
+                            #     assert control_child is not None
+                            #     dag.children.remove(control_child)
+                            #     control_child.parents.remove(dag)
+                            #     dag.add_child(node_new)
+                            #     dag.add_child(node_old)
+                            #     node_old.add_child(control_child)
+                            #     node_new.add_child(control_child)
                         return True
             # If we reach here, we didn't push the Pauli gate, so we try see if one of the children can push a Pauli
 
@@ -521,34 +582,23 @@ class CliffordSimplifier:
                 elif isinstance(child.node, (Z, X)):
                     pass # We just stop here, we don't push past Paulis
                 elif isinstance(child.node, (CZ, CX)): # Pushing H^2 through CX/CX just makes them their adjoint
-                    child.node.repetitions = -child.node.repetitions
-                    dag.node, child.node = child.node, dag.node
+                    H2 = dag.node.copy()
+                    dag.node = child.node.copy()
+                    dag.node.repetitions = -dag.node.repetitions
+                    dag.merge(child)
+                    dag.insert_single_qudit_gate_after(H2)
                     return True
                 elif isinstance(child.node, SWAP):
                     # Pushing H^2 through SWAP just changes the target of the H^2
                     q = dag.node.target
                     target = child.node.target
                     control = child.node.control
-                    control_child = None
-                    target_child = None
-                    for child2 in child.children:
-                        if (child2.node is not None and child2.node.target == control 
-                            or isinstance(child2.node, GateWithControl) and child2.node.control == control):
-                            control_child = child2
-                        if (child2.node is not None and child2.node.target == target or 
-                            isinstance(child2.node, GateWithControl) and child2.node.control == target):
-                            target_child = child2
-                    double_child: bool = control_child is not None and control_child is target_child and control_child is not target_child
-                    swap = child.node.copy()
                     H2 = dag.node.copy()
+                    dag.node = child.node.copy() # Put the two-qubit gate in place of the H^2
                     dag.merge(child) # Remove the SWAP node
-                    dag.node = swap # Put the two-qubit gate in place of the H^2
                     new_target = target if control == q else control
                     H2.target = new_target
-                    dag.insert_between_child(DAG(H2), target_child if new_target == target else control_child)
-                    if double_child: # The child is on both the target and control, so it should still be a child of the SWAP
-                        assert control_child is not None
-                        dag.add_child(control_child)
+                    dag.insert_single_qudit_gate_after(H2)
                     return True
                 elif isinstance(child.node, S): # Commuting H^2 with S gate
                     # Pushing H^2 through S creates a Z^{-1} gate
@@ -557,12 +607,7 @@ class CliffordSimplifier:
                     new_z = Z(dag.node.target)
                     new_z.repetitions = -child.node.repetitions
                     dag.node, child.node = child.node, dag.node
-                    if len(child.children) == 0:
-                        child2 = None
-                    else:
-                        assert len(child.children) == 1, "S gate should have at most one child"
-                        child2 = child.children[0]
-                    child.insert_between_child(DAG(new_z), child2)
+                    child.insert_single_qudit_gate_after(new_z)
                     return True
             # If we reach here, we didn't push the H^2 gate, so we try see if one of the children can push one
 
@@ -808,6 +853,7 @@ class StepperWidget:
         self.obj = circuitsimp
         self.index = 0
         self.max_index = len(self.obj.circuit_list) - 1
+        self.cached_circuits = {}
         
         # Slider to move through steps
         self.slider = widgets.IntSlider(

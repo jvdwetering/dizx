@@ -232,12 +232,12 @@ class Gate(object):
         return copy.deepcopy(self)
     
     def merge(self, other) -> None:
-        """Merges this gate with another gate, typically used for combining gates in a circuit."""
+        """Merges this gate with another gate, typically used for combining gates of the same type on the same qudit in a circuit."""
         if self.name != other.name:
             raise ValueError("Cannot merge gates of different types: {} and {}".format(self.name, other.name))
         if hasattr(self, "target") and hasattr(other, "target"):
             if self.target != other.target:
-                raise ValueError("Cannot merge gates with different targets: {} and {}".format(self.target, other.target))
+                raise ValueError("Cannot merge gate {} with different targets: {} and {}".format(self.name, self.target, other.target))
         if hasattr(self, "control") and hasattr(other, "control"):
             if self.control != other.control:
                 raise ValueError("Cannot merge gates with different controls: {} and {}".format(self.control, other.control))
