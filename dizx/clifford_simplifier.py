@@ -1,6 +1,12 @@
 from typing import Optional, List
 from .circuit import Circuit
 from .circuit.gates import CZ, CX, SWAP, HAD, Z, X, S, NEG, Gate, GateWithControl
+from . import symplectic
+
+
+class SemanticsException(Exception):
+    """Exception type for telling the user that the rewrite that was applied 
+    has not preserved the semantics of the circuit."""
 
 class DAG:
     """A class representing a directed acyclic graph (DAG) for a qudit Clifford circuit."""
@@ -9,6 +15,26 @@ class DAG:
         self.parents: List['DAG'] = []
         self.children: List['DAG'] = []
         self.ancestors: set['DAG'] = set()
+    
+    def copy(self) -> 'DAG':
+        d = DAG(self.node.copy() if self.node is not None else None)
+        self.my_copy = d # Nodes might share children, so we remember if we already copied a node, and reuse that.
+        # d.parents = [p for p in self.parents]
+        # d.refresh_ancestors()
+        for child in self.children:
+            if hasattr(child, 'my_copy') and child.my_copy is not None:
+                d.add_child(child.my_copy)
+            else:
+                d.add_child(child.copy())
+        
+        if self.node is None: # We are the top level node, and hence we are now done with the copy operation
+            self._reset_copied_flag()
+        return d
+    
+    def _reset_copied_flag(self) -> None:
+        self.my_copy = None
+        for child in self.children:
+            child._reset_copied_flag()
 
     def add_child(self, child: 'DAG') -> None:
         """Add a child node to the DAG."""
@@ -148,10 +174,13 @@ class CliffordSimplifier:
     by proof assistants to verify the correctness of the simplification. 
     Hence, it remembers all the steps it did and makes sure each step is a small atomic step."""
     def __init__(self, circuit: Circuit) -> None:
-        self.circuit = circuit.copy()
-        self.create_dag()
+        self.circuit: Circuit = circuit.copy()
+        self.dags: list[DAG] = []
+        self.steps_done: list[int] = []
         self.circuit_list: list[Circuit] = [] # Stores the intermediate steps of the simplification
+        self.create_dag()
         self.topological_sort() # Populates self.circuit_list with the initial circuit
+        self.check_semantics_each_step = False
 
     def create_dag(self) -> None:
         """Create a directed acyclic graph (DAG) from the circuit. This is a dependency graph
@@ -193,6 +222,8 @@ class CliffordSimplifier:
                 else:
                     latest_gate[gate.target].add_child(node) # type: ignore
                 latest_gate[gate.target] = node
+        self.circuit_list.append(self.circuit.copy())
+        self.dags.append(self.dag.copy())
 
 
     def topological_sort(self) -> Circuit:
@@ -228,6 +259,17 @@ class CliffordSimplifier:
         c.gates = sorted_gates
         return c
     
+    def update_circuit(self, description:str="") -> None:
+        self.circuit = self.topological_sort()
+        self.circuit_list.append(self.circuit)
+        self.steps_done.append(description)
+        self.dags.append(self.dag.copy())
+        if self.check_semantics_each_step:
+            mat1 = self.circuit_list[-1].to_symplectic_matrix()
+            mat2 = self.circuit_list[-2].to_symplectic_matrix()
+            if symplectic.compare_matrices(mat1, mat2, self.circuit.dim):
+                raise SemanticsException("Semantics were not preserved by the last rewrite applied")
+    
     def simple_optimize(self) -> bool:
         """Runs a simple optimization on the circuit, combining gates, removing identity gates,
         pushing Paulis and double Hadamards."""
@@ -240,14 +282,10 @@ class CliffordSimplifier:
             if success: 
                 success = False
                 continue  # We made progress, so we try again
-            success = self.push_pauli()
-            if success:
-                success = False
-                continue
-            success = self.push_double_hadamard()
-            if success:
-                success = False
-                continue
+            if self.push_pauli(): continue
+            if self.push_double_hadamard(): continue
+            if self.push_SWAP(): continue
+            if self.push_S_gate(): continue
             break  # No more progress can be made
         return loops != 1 # Whether it applied at least one optimization step
     
@@ -288,8 +326,7 @@ class CliffordSimplifier:
         while try_merge(self.dag):
             success = True
         if success:
-            self.circuit = self.topological_sort()
-            self.circuit_list.append(self.circuit)
+            self.update_circuit("Combine gates")
 
         return success
     
@@ -317,8 +354,7 @@ class CliffordSimplifier:
         success = try_remove_identity(self.dag) # We removed something, so time to stop
         
         if success:
-            self.circuit = self.topological_sort()
-            self.circuit_list.append(self.circuit)
+            self.update_circuit("Remove identity")
 
         return success
     
@@ -378,7 +414,7 @@ class CliffordSimplifier:
                         if (child2.node is not None and child2.node.target == target or 
                             isinstance(child2.node, GateWithControl) and child2.node.control == target):
                             target_child = child2
-                    double_child = control_child is not None and control_child is target_child
+                    double_child = control_child is not None and control_child is target_child and  control_child is not target_child
                     two_qubit_gate = child.node.copy()
                     pauli = dag.node.copy()
                     dag.merge(child) # Remove the child node
@@ -453,8 +489,7 @@ class CliffordSimplifier:
         
         success = try_push(self.dag)
         if success:
-            self.circuit = self.topological_sort()
-            self.circuit_list.append(self.circuit)
+            self.update_circuit("Push Pauli")
 
         return success
     
@@ -495,7 +530,7 @@ class CliffordSimplifier:
                         if (child2.node is not None and child2.node.target == target or 
                             isinstance(child2.node, GateWithControl) and child2.node.control == target):
                             target_child = child2
-                    double_child: bool = control_child is not None and control_child is target_child
+                    double_child: bool = control_child is not None and control_child is target_child and control_child is not target_child
                     swap = child.node.copy()
                     H2 = dag.node.copy()
                     dag.merge(child) # Remove the SWAP node
@@ -509,10 +544,10 @@ class CliffordSimplifier:
                     return True
                 elif isinstance(child.node, S): # Commuting H^2 with S gate
                     # Pushing H^2 through S creates a Z^{-1} gate
-                    # Or equivalently H^2 ; S = S ; H^2 ; Z 
+                    # Or equivalently H^2;S = S;H^2;Z^{-1} 
                     # Which is useful for us, since we want the Paulis after the H^2 anyway
                     new_z = Z(dag.node.target)
-                    new_z.repetitions = child.node.repetitions
+                    new_z.repetitions = -child.node.repetitions
                     dag.node, child.node = child.node, dag.node
                     if len(child.children) == 0:
                         child2 = None
@@ -530,8 +565,7 @@ class CliffordSimplifier:
         
         success = try_push(self.dag)
         if success:
-            self.circuit = self.topological_sort()
-            self.circuit_list.append(self.circuit)
+            self.update_circuit("Push H^2")
 
         return success
     
@@ -574,8 +608,7 @@ class CliffordSimplifier:
 
         success = try_decomp(self.dag)
         if success:
-            self.circuit = self.topological_sort()
-            self.circuit_list.append(self.circuit)
+            self.update_circuit("Apply Euler H;S;H -> S^-1;H;S^-1;X")
 
         return success
     
@@ -620,8 +653,7 @@ class CliffordSimplifier:
 
         success = try_decomp(self.dag)
         if success:
-            self.circuit = self.topological_sort()
-            self.circuit_list.append(self.circuit)
+            self.update_circuit("Apply Euler S^-1;H;S^-1 -> H;S;H;X^{-1}")
 
         return success
     
@@ -653,8 +685,7 @@ class CliffordSimplifier:
         
         success = try_push(self.dag)
         if success:
-            self.circuit = self.topological_sort()
-            self.circuit_list.append(self.circuit)
+            self.update_circuit("Commute S")
 
         return success
 
@@ -667,10 +698,12 @@ class CliffordSimplifier:
                     return False
                 cz = dag.node
                 if len(dag.children) == 1 and dag.children[0].node is not None and isinstance(dag.children[0].node, CX):
-                    # CZ has a single CX child, so they must have the same target and control qudits
+                    # CZ has a single CX child.
+                    # Check that they share control and targets
                     child = dag.children[0]
                     cx = child.node
-                    assert cx.target in (cz.target, cz.control) and cx.control in (cz.target, cz.control), "CZ and CX must have the same target and control qudits"
+                    if not (cx.target in (cz.target, cz.control) and cx.control in (cz.target, cz.control)):
+                        return False # TODO: implement the case where CZ and CX only overlap on one qudit
                     dag.node = cx.copy()  # We interchange the CZ with the CX gate
                     child.node = cz.copy()
                     new_s = S(cx.control)
@@ -693,8 +726,7 @@ class CliffordSimplifier:
         
         success = try_push(self.dag)
         if success:
-            self.circuit = self.topological_sort()
-            self.circuit_list.append(self.circuit)
+            self.update_circuit("Push CZ past CX")
 
         return success
     
@@ -756,7 +788,6 @@ class CliffordSimplifier:
         
         success = try_push(self.dag)
         if success:
-            self.circuit = self.topological_sort()
-            self.circuit_list.append(self.circuit)
+            self.update_circuit("Push SWAP")
         
         return success
