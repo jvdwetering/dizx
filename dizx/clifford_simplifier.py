@@ -856,7 +856,12 @@ class StepperWidget:
             clear_output(wait=True)
             print("Step done:", self.obj.steps_done[self.index] if self.index != self.max_index else "Final")
             print("Circuit:")
-            print(self.obj.circuit_list[self.index])
+            if not self.index in self.cached_circuits:
+                self.cached_circuits[self.index] = self.obj.circuit_list[self.index].to_qiskit_rep().draw("mpl")
+            display(self.cached_circuits[self.index])
+
+            # display(self.obj.circuit_list[self.index].to_qiskit_rep().draw("mpl"))
+            # print(self.obj.circuit_list[self.index])
             print("DAG:")
             print(self.obj.dags[self.index])
     

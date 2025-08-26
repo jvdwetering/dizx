@@ -19,6 +19,8 @@ from typing import List, Union, Optional, Iterator, Dict
 
 import numpy as np
 
+from qiskit import QuantumCircuit
+
 from .gates import Gate, gate_types, XPhase, ZPhase, NEG, X, Z, S, CZ, CX, SWAP, HAD, Measurement
 
 from ..graph.base import BaseGraph
@@ -263,6 +265,27 @@ class Circuit(object):
             mat = m*mat # We multiply this way since circuit order goes the opposite direction of matrix multiplication order
         
         return mat
+    
+    def to_qiskit_rep(self) -> QuantumCircuit:
+        from qiskit.circuit.library import HGate, CXGate, CZGate, SwapGate
+        qc = QuantumCircuit(self.qudits)
+        for g in self.gates:
+            if g.repetitions == 1:
+                label = ""
+            else:
+                label = "^" + str(g.repetitions)
+            if isinstance(g, (Z, X, HAD, S)):
+                label = g.name + label
+                qc.append(HGate(label=label),[g.target])
+            elif isinstance(g, CX):
+                qc.append(CXGate(label=label),[g.control,g.target])
+            elif isinstance(g, CZ):
+                qc.append(CZGate(label=label),[g.control,g.target])
+            elif isinstance(g, SWAP):
+                qc.append(SwapGate(label=label),[g.control,g.target])
+            else:
+                raise ValueError("Unsupported gate", str(g))
+        return qc
             
             
 
