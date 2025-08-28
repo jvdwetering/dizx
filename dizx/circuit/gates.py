@@ -22,12 +22,14 @@ quantum gates for use in the Circuit class.
 import copy
 import math
 from typing import Dict, List, Optional, Type, ClassVar, TypeVar, Generic, Set, TYPE_CHECKING
+
+from sympy import mod_inverse
+
+from ..graph.base import BaseGraph, VT, ET
 from ..graph.phase import Phase, CliffordPhase
 from ..graph.edge import Edge
-from ..utils import settings
+from ..utils import settings, VertexType
 
-from ..utils import VertexType
-from ..graph.base import BaseGraph, VT, ET
 
 # We need this type variable so that the subclasses of Gate return the correct type for functions like copy()
 Tvar = TypeVar('Tvar', bound='Gate')
@@ -150,15 +152,8 @@ class Gate(object):
     name: ClassVar[str] = "BaseGate"
     qasm_name: ClassVar[str] = 'undefined'
     qasm_name_adjoint: ClassVar[str] = 'undefined'
-    index = 0
+    index: int = 0
     repetitions: int = 1 # Allows multiple gates in a row to be represented by a single gate.
-
-    def __init__(self, dim: int = settings.dim) -> None:
-        self._dim = dim
-
-    @property
-    def dim(self):
-        return self._dim
 
     def __str__(self) -> str:
         name = self.name
@@ -277,7 +272,7 @@ class Gate(object):
                     "Gate {} doesn't have a QASM description".format(
                         str(self)))
             return "\n".join(g.to_qasm() for g in bg)
-        if hasattr(self, "adjoint") and self.adjoint:  # type: ignore
+        if hasattr(self, "adjoint") and self.adjoint and self.repetitions == 1:  # type: ignore
             n = self.qasm_name_adjoint
 
         args = []
@@ -287,7 +282,10 @@ class Gate(object):
         param = ""
         if hasattr(self, "printphase") and self.printphase:  # type: ignore
             param = "({}*pi)".format(float(self.phase))  # type: ignore
-        return "{}{} {};".format(n, param, ", ".join(args))
+        reps = ""
+        if self.repetitions != 1:
+            reps = "^" + str(self.repetitions)
+        return "{}{}{} {};".format(n, reps, param, ", ".join(args))
 
     def to_graph(
             self, g: BaseGraph[VT, ET], q_mapper: TargetMapper[VT],
@@ -463,6 +461,32 @@ class HAD(Gate):
         q_mapper.advance_next_row(self.target)
 
 
+class MUL(Gate):
+    """The qudit Clifford multiplier gate, that for a `mult_value` of `a` implements
+    the unitary map |x> -> |a*x>. As long as `a` is non-zero, and the qudit dimension is prime,
+    this gate is unitary, with its adjoint given by the multiplier with `mult_value` `a^{-1} mod p`.
+    Note that MUL(-1) == H^2."""
+    name = 'MUL'
+    qasm_name = 'mul'
+
+    def __init__(self, target: int, mult_value, dim) -> None:
+        self.target = target
+        self.mult_value = mult_value
+        self.dim = dim
+
+    def merge(self, other) -> None:
+        """Merges this gate with another gate, typically used for combining gates of the same type on the same qudit in a circuit."""
+        if self.name != other.name:
+            raise ValueError("Cannot merge gates of different types: {} and {}".format(self.name, other.name))
+        if self.target != other.target:
+            raise ValueError("Cannot merge gate {} with different targets: {} and {}".format(self.name, self.target, other.target))
+        
+        self.mult_value *= other.mult_value
+
+    def to_adjoint(self) -> 'MUL':
+        return MUL(self.target, mod_inverse(self.mult_value,self.dim), self.dim)
+
+
 class GateWithControl(Gate):
     """Base class for gates that have a control qudit."""
     control: int = -1
@@ -517,6 +541,15 @@ class CZ(GateWithControl):
         q_mapper.set_next_row(self.target, r + 1)
         q_mapper.set_next_row(self.control, r + 1)
         g.scalar.add_power(1)
+
+    def merge(self, other) -> None: # Need to overload the method as CZ is symmetric in target and control
+        """Merges this gate with another gate, typically used for combining gates of the same type on the same qudit in a circuit."""
+        if self.name != other.name:
+            raise ValueError("Cannot merge gates of different types: {} and {}".format(self.name, other.name))
+        if self.target not in (other.target, other.control) or self.control not in (other.target, other.control):
+            raise ValueError(f"Cannot merge CZ gates with different targets: ({self.control}, {self.target}), ({other.control}, {other.target})")
+        
+        self.repetitions += other.repetitions
 
 
 class SWAP(GateWithControl):
@@ -641,6 +674,7 @@ gate_types: Dict[str, Type[Gate]] = {
     "SWAP": SWAP,
     "H": HAD,
     "HAD": HAD,
+    "MUL": MUL,
     "InitAncilla": InitAncilla,
     "PostSelect": PostSelect,
     "DiscardDit": DiscardDit,
@@ -655,6 +689,7 @@ qasm_gate_table: Dict[str, Type[Gate]] = {
     "s": S,
     "sdg": S,
     "h": HAD,
+    "mul": MUL,
     "hdg": HAD,
     "neg": NEG,
     "cx": CX,

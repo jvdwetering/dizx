@@ -3,7 +3,7 @@ We are ignoring phases everywhere, and so everything is 'up to Paulis'.
 The symplectic matrices are constructed according to the order (x1,z1,x2,z2,...) and hence not in terms of Z and X blocks.
 """
 
-from sympy import symbols, groebner, Matrix, eye, Symbol
+from sympy import symbols, groebner, Matrix, eye, Symbol, mod_inverse
 
 Hmat = Matrix([[0,1],[-1,0]])
 H2mat = Matrix([[-1,0],[0,-1]])
@@ -19,6 +19,10 @@ def Smat(rep):
     """Create a matrix representing `rep` repetitions of the S gate."""
     return Matrix([[1  ,0],
                    [rep,1]])
+
+def MULmat(mul, dim):
+    return Matrix([[mul,0],
+                   [0,mod_inverse(mul,dim)]])
 
 def CXmat(rep):
     return Matrix([
@@ -76,6 +80,9 @@ def H(target, num_qudits, reps=1):
     else: mat = idmat
     return embed_block(mat, num_qudits, [target])
 
+def MUL(target, num_qudits, mul, dim):
+    mat = MULmat(mul, dim)
+    return embed_block(mat, num_qudits, [target])
 
 def S(target, num_qudits, reps=1):
     mat = Smat(reps)

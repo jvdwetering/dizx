@@ -21,7 +21,7 @@ import numpy as np
 
 from qiskit import QuantumCircuit
 
-from .gates import Gate, gate_types, XPhase, ZPhase, NEG, X, Z, S, CZ, CX, SWAP, HAD, Measurement
+from .gates import Gate, gate_types, XPhase, ZPhase, X, Z, S, CZ, CX, SWAP, HAD, MUL
 
 from ..graph.base import BaseGraph
 from .. import symplectic
@@ -206,6 +206,26 @@ class Circuit(object):
 
     ### CONVERSION METHODS
 
+    @staticmethod
+    def from_qasm(s: str) -> 'Circuit':
+        """Produces a :class:`Circuit` based on a QASM input string.
+        It ignores all the non-unitary instructions like measurements in the file.
+        It currently doesn't support custom gates that have parameters."""
+        from .qasmparser import QASMParser
+        p = QASMParser()
+        return p.parse(s)
+    
+    @staticmethod
+    def from_qasm_file(fname: str) -> 'Circuit':
+        """Produces a :class:`Circuit` based on a QASM description of a circuit.
+        It ignores all the non-unitary instructions like measurements in the file.
+        It currently doesn't support custom gates that have parameters."""
+        from .qasmparser import QASMParser
+        p = QASMParser()
+        with open(fname, 'r') as f:
+            c = p.parse(f.read())
+        c.name = os.path.basename(fname)
+        return c
 
     # @staticmethod
     # def from_graph(g:BaseGraph, split_phases:bool=True) -> 'Circuit':
@@ -235,7 +255,8 @@ class Circuit(object):
 
     def to_qasm(self) -> str:
         """Produces a QASM description of the circuit."""
-        s = """OPENQASM D.0;\ninclude "qelib1.inc";\n"""
+        s = """OPENQASM 2.0;\ninclude "qelib1.inc";\n"""
+        s += f"quditdim {self.dim}\n"
         s += "qreg q[{!s}];\n".format(self.qudits)
         for g in self.gates:
             s += g.to_qasm() + "\n"
@@ -253,6 +274,8 @@ class Circuit(object):
                 m = symplectic.S(g.target, qudits, reps=g.repetitions)
             elif isinstance(g, HAD):
                 m = symplectic.H(g.target, qudits, reps=g.repetitions)
+            elif isinstance(g, MUL):
+                m = symplectic.MUL(g.target, qudits, g.mult_value, self.dim)
             elif isinstance(g, CX):
                 m = symplectic.CX(g.control,g.target,qudits,reps=g.repetitions)
             elif isinstance(g, CZ):
@@ -277,6 +300,9 @@ class Circuit(object):
             if isinstance(g, (Z, X, HAD, S)):
                 label = g.name + label
                 qc.append(HGate(label=label),[g.target])
+            elif isinstance(g, MUL):
+                label = g.name + f"({g.mult_value})"
+                qc.append(HGate(label=label),[g.target])
             elif isinstance(g, CX):
                 qc.append(CXGate(label=label),[g.control,g.target])
             elif isinstance(g, CZ):
@@ -286,6 +312,9 @@ class Circuit(object):
             else:
                 raise ValueError("Unsupported gate", str(g))
         return qc
+    
+    def draw(self) -> None:
+        return self.to_qiskit_rep().draw('mpl')
             
             
 
