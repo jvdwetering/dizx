@@ -362,7 +362,13 @@ class CliffordSimplifier:
     
     def simple_optimize(self) -> bool:
         """Runs a simple optimization on the circuit, combining gates, removing identity gates,
-        pushing Paulis and double Hadamards."""
+        and trying the following 'push gate to the right strategies':
+        - pushing Pauli gates
+        - pushing double Hadamard gates
+        - pushing SWAP gates
+        - commuting S past CX and CZ controls
+        - commuting S past CX targets
+        - commuting CZ past CX if they act on the same qudits."""
         success = False
         loops = 0
         while True:
@@ -376,6 +382,8 @@ class CliffordSimplifier:
             if self.push_double_hadamard(): continue
             if self.push_SWAP(): continue
             if self.push_S_gate(): continue
+            if self.push_S_past_CX(): continue
+            if self.push_CZ_past_CX(): continue
             break  # No more progress can be made
         return loops != 1 # Whether it applied at least one optimization step
     
@@ -952,6 +960,63 @@ class CliffordSimplifier:
                             child.insert_single_qudit_gate_after(mul1)
                             child.insert_single_qudit_gate_after(mul2)
                         return True
+
+            for child in dag.children:
+                if try_push(child):
+                    return True
+            return False
+        
+        success = try_push(self.dag)
+        if success:
+            self.update_circuit("Push CZ past CX")
+
+        return success
+    
+    
+    def toggle_pair_of_CX_gates(self) -> bool:
+        """Finds a pair of CX^a(c,t);CX^b(t,c) where a*b + 1 != 0, 
+        and transforms them into CX gates pointing the other way, and some single qudit gates.
+        In order to prevent infinite loops, we only apply this if there is another CX gate after the second one
+        (this prevents a loop if we apply the combine_gates() strategy after this one).
+        The exact rewrite rule is as follows: define c = a*b+1, then
+        CX^a(c,t);CX^b(t,c) = CX^{b*c^{-1}}(t,c);CX(c,t)^{a*c};Mult_c(c);Mult_{c^{-1}}(t)
+        Note that this rewrite is complementary to the one in `transform_CX_to_SWAP()` which applies when a*b + 1 = 0.
+        """
+        def try_push(dag: DAG) -> bool:
+            if dag.node is not None and isinstance(dag.node, CX):
+                if len(dag.children) == 0:
+                    return False
+                cx1 = dag.node
+                if len(dag.children) == 1 and dag.children[0].node is not None and isinstance(dag.children[0].node, CX):
+                    # CZ has a single CX child.
+                    # Check that they share control and targets
+                    child = dag.children[0]
+                    cx2 = child.node
+                    assert cx2 is not None
+                    a = cx1.repetitions
+                    b = cx2.repetitions
+                    c = (a*b + 1) % self.circuit.dim
+                    if cx2.target == cx1.control and cx2.control == cx1.target and c != 0: # type: ignore
+                        if len(child.children) == 1 and child.children[0].node is not None and isinstance(child.children[0].node, CX):
+                            dag.node = cx2.copy()  # We set the two CX gates, to a CX pointing the other way
+                            dag.node.repetitions = (b * pow(c, -1, self.circuit.dim)) % self.circuit.dim
+                            child.node = cx1.copy()
+                            child.node.repetitions = (a * c) % self.circuit.dim
+                            mul1: Gate
+                            mul2: Gate
+                            if (c+1) % self.circuit.dim == 0: # We do some special cases where the
+                                mul1 = HAD(cx1.target) # resulting multipliers are jsut H^2
+                                mul1.repetitions = 2
+                                mul2 = HAD(cx1.control)  
+                                mul2.repetitions = 2
+                                child.insert_single_qudit_gate_after(mul1)
+                                child.insert_single_qudit_gate_after(mul2)
+                            else:
+                                mul1 = MUL(cx1.target, c, self.circuit.dim)
+                                mul2 = MUL(cx1.control,c, self.circuit.dim).to_adjoint()
+                                child.insert_single_qudit_gate_after(mul1)
+                                child.insert_single_qudit_gate_after(mul2)
+                            return True
 
             for child in dag.children:
                 if try_push(child):
