@@ -88,20 +88,22 @@ class DAG:
                 candidate = can
         return candidate
     
-    def find_first_ancestor_on_qudit(self, index:int) -> Optional['DAG']:
+    def find_first_ancestor_on_qudit(self, index:int) -> 'DAG':
         """Finds the first DAG among the children and grandchildren whose node has a target or control equal to index.
         Needed if we want to inject for instance a single-qudti gate after the current two-qudit gate.
         This is only really meaningful if self.node has a target or control equal to index."""
         candidates: list['DAG'] = []
         for parent in self.parents:
-            if parent.node is None: continue
+            if parent.node is None: 
+                candidates.append(parent)
+                continue
             g = parent.node
             if g.target == index or isinstance(g,GateWithControl) and g.control == index:
                 return parent
             candidate = parent.find_first_ancestor_on_qudit(index)
-            if candidate is not None: candidates.append(candidate)
+            candidates.append(candidate)
         
-        if not candidates: return None
+        if not candidates: return self # We are the root node
         candidate = candidates[0]
         if len(candidates) == 1: return candidate
         for can in candidates[1:]:
@@ -119,9 +121,9 @@ class DAG:
             else:
                 desc_control = None
             self.add_child(new_node)
-            if desc_target:
+            if desc_target is not None:
                 new_node.add_child(desc_target)
-            if desc_control: # TODO: Actually figure out what needs to happen if we add a two-qudit gate.
+            if desc_control is not None: # TODO: Actually figure out what needs to happen if we add a two-qudit gate.
                 new_node.add_child(desc_control)
         elif child in self.children:
             self.children.remove(child)
@@ -201,7 +203,7 @@ class DAG:
             raise ValueError("Cannot insert a two-qudit gate with different target and control qudits than the current gate,", self.node, gate)
         new_node = DAG(gate)
         self.add_child(new_node)
-        for child in self.children:
+        for child in self.children.copy():
             if child is new_node: continue
             self.remove_child(child)  # Remove the child from the current DAG
             new_node.add_child(child)  # Add the child to the new node
@@ -258,6 +260,7 @@ class CliffordSimplifier:
         self.dags: list[DAG] = []
         self.steps_done: list[int] = []
         self.circuit_list: list[Circuit] = [] # Stores the intermediate steps of the simplification
+        self.max_index = 1
         self.create_dag()
         self.topological_sort() # Populates self.circuit_list with the initial circuit
         self.check_semantics_each_step = False
@@ -269,11 +272,10 @@ class CliffordSimplifier:
         in particular, a child will be a gate that happens after its parent on the same qubit."""
         self.dag = DAG()
         latest_gate: dict[int,Optional[DAG]] = {i: None for i in range(self.circuit.qudits)}
-        index = 1
         for gate in self.circuit.gates:
             assert hasattr(gate, 'target'), "Gate must have a target qudit."
-            gate.index = index
-            index += 1
+            gate.index = self.max_index
+            self.max_index += 1
             node = DAG(gate)
             if isinstance(gate, GateWithControl):
                 parent1 = latest_gate[gate.target]
@@ -318,7 +320,8 @@ class CliffordSimplifier:
             if all(p.node in visited for p in dag.parents if p.node is not None):
                 assert dag.node is not None, "DAG node must not be None"
                 if dag.node.index == 0:
-                    dag.node.index = len(sorted_gates)+1 # This is needed to make all the gates 'unique' so that the equality check works correctly
+                    dag.node.index = self.max_index # This is needed to make all the gates 'unique' so that the equality check works correctly
+                    self.max_index += 1
                 if dag.node is not None and dag.node not in sorted_gates:
                     gate = dag.node
                     sorted_gates.append(gate)
@@ -336,8 +339,7 @@ class CliffordSimplifier:
                 break
         
         c = self.circuit.copy()
-        sorted_gates = [g.copy() for g in sorted_gates]
-        c.gates = sorted_gates
+        c.gates = [g.copy() for g in sorted_gates]
         return c
     
     def update_circuit(self, description:str="") -> None:
@@ -789,7 +791,6 @@ class CliffordSimplifier:
                 child = dag.children[0]
                 assert child.node is not None, "Child node must not be None"
                 if isinstance(child.node, CX) and child.node.target == dag.node.target:
-                    
                     s = dag.node.copy()
                     cx = child.node.copy()
                     a = s.repetitions
@@ -798,7 +799,7 @@ class CliffordSimplifier:
                     new_cz.repetitions = -a*b
                     s2 = S(cx.control,repetitions=a*b**2)
                     if b != 1: # Only need to add a Z if cx has number of repetitions not equal to 1.
-                        z = Z(cx.control,repetitions=a*b*(b+1)/2) # type: ignore # We know that the outcome is always an int
+                        z = Z(cx.control,repetitions=a*b*(b+1)//2)
                     dag.node = cx  # We replace the S with the CX gate
                     dag.merge(child)  # Put the CX on the place of the original S
                     new_node = dag.insert_two_qudit_gate_after(new_cz)
@@ -842,17 +843,16 @@ class CliffordSimplifier:
                     target = dag.node.target
                     control = child.node.control if target==child.node.target else child.node.target
                     new_gate = (CX if isinstance(child.node, CZ) else CZ)(control,target)
-                    cx = child.node.copy()
                     if h_copy.repetitions % 4 == 1:
                         if isinstance(new_gate, CX):
-                            new_gate.repetitions = -child.node.repetitions
-                        else:
                             new_gate.repetitions = child.node.repetitions
+                        else:
+                            new_gate.repetitions = -child.node.repetitions
                     else: # We have a H^3
                         if isinstance(new_gate, CX):
-                            new_gate.repetitions = child.node.repetitions
-                        else:
                             new_gate.repetitions = -child.node.repetitions
+                        else:
+                            new_gate.repetitions = child.node.repetitions
                     
                     dag.node = new_gate  # We replace the HAD with the CX/CZ gate
                     dag.merge(child)  # Put the CX/CZ on the place of the original HAD
@@ -914,7 +914,7 @@ class CliffordSimplifier:
     def transform_CX_to_SWAP(self) -> bool:
         """Finds a pair of CX(c,t);CX(t,c) and transforms them into a SWAP and a CNOT pointing the other way.
         The exact rewrite rule is as follows:
-        CX^a(c,t);CX^{a^{-1}}(t,c) = CX^{-a^{-1}}(t,c);SWAP(c,t);Mult_a(t);Mult_{-a^{-1}}(c)
+        CX^a(c,t);CX^{a^{-1}}(t,c)+ = CX^{-a^{-1}}(t,c);SWAP(c,t);Mult_a(t);Mult_{-a^{-1}}(c)
         """
         def try_push(dag: DAG) -> bool:
             if dag.node is not None and isinstance(dag.node, CX):

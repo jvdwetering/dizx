@@ -5,9 +5,9 @@ The symplectic matrices are constructed according to the order (x1,z1,x2,z2,...)
 
 from sympy import symbols, groebner, Matrix, eye, Symbol, mod_inverse
 
-Hmat = Matrix([[0,1],[-1,0]])
+Hmat = Matrix([[0,-1],[1,0]])
 H2mat = Matrix([[-1,0],[0,-1]])
-Hinvmat = Matrix([[0,-1],[1,0]])
+Hinvmat = Matrix([[0,1],[-1,0]])
 idmat = Matrix([[1,0],[0,1]])
 SWAPmat = Matrix([
                 [0,0,1,0],
@@ -75,7 +75,7 @@ def ID(num_qudits):
 
 def H(target, num_qudits, reps=1):
     if reps % 4 == 1: mat = Hmat
-    elif reps % 4 ==2: mat = H2mat
+    elif reps % 4 == 2: mat = H2mat
     elif reps % 4 == 3: mat = Hinvmat
     else: mat = idmat
     return embed_block(mat, num_qudits, [target])
