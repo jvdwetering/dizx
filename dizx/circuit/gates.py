@@ -566,6 +566,15 @@ class SWAP(GateWithControl):
     def to_graph(self, g, q_mapper, c_mapper):
         for gate in self.to_basic_gates():
             gate.to_graph(g, q_mapper, c_mapper)
+    
+    def merge(self, other) -> None: # Need to overload the method as SWAP is symmetric in target and control
+        """Merges this gate with another gate, typically used for combining gates of the same type on the same qudit in a circuit."""
+        if self.name != other.name:
+            raise ValueError("Cannot merge gates of different types: {} and {}".format(self.name, other.name))
+        if self.target not in (other.target, other.control) or self.control not in (other.target, other.control):
+            raise ValueError(f"Cannot merge CZ gates with different targets: ({self.control}, {self.target}), ({other.control}, {other.target})")
+        
+        self.repetitions += other.repetitions
 
 
 class InitAncilla(Gate):

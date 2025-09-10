@@ -14,6 +14,10 @@ class SemanticsException(Exception):
     """Exception type for telling the user that the rewrite that was applied 
     has not preserved the semantics of the circuit."""
 
+class DAGIntegrityException(Exception):
+    """Exception type for telling the user that the rewrite that was applied 
+    has not preserved the semantics of the circuit."""
+
 class DAG:
     """A class representing a directed acyclic graph (DAG) for a qudit Clifford circuit."""
     def __init__(self, node: Optional[Gate] = None) -> None:
@@ -35,12 +39,14 @@ class DAG:
         
         if self.node is None: # We are the top level node, and hence we are now done with the copy operation
             self._reset_copied_flag()
+            d.refresh_ancestors() # Just to be sure
         return d
     
     def _reset_copied_flag(self) -> None:
         self.my_copy = None
         for child in self.children:
             child._reset_copied_flag()
+    
 
     def add_child(self, child: 'DAG') -> None:
         """Add a child node to the DAG."""
@@ -111,6 +117,40 @@ class DAG:
                 candidate = can
         return candidate
     
+    def check_dag_integrity(self) -> None:
+        for child in self.children:
+            if self not in child.parents:
+                raise DAGIntegrityException(f"Child {child.node} of node {self.node} does not have the parent as its parent")
+            if self not in child.ancestors:
+                raise DAGIntegrityException(f"Child {child.node} of node {self.node} does not have the parent as its ancestor")
+            for child2 in self.children:
+                if child2 is child: continue
+                if child2 in child.ancestors:
+                    raise DAGIntegrityException(f"Child {child.node} of node {self.node} is also descendant of other child {child2.node}")
+        if self.node is not None:
+            if isinstance(self.node,GateWithControl):
+                c, t = self.node.control, self.node.target
+                for child in self.children:
+                    if child.node is None: continue
+                    if isinstance(child.node,GateWithControl):
+                        if child.node.target not in (c,t) and child.node.control not in (c,t):
+                            raise DAGIntegrityException(f"Child {child.node} of node {self.node} has qudit target not equal to that of its parent")
+                    else:
+                        if child.node.target not in (c,t):
+                            raise DAGIntegrityException(f"Child {child.node} of node {self.node} has qudit target not equal to that of its parent")
+            else:
+                t = self.node.target
+                for child in self.children:
+                    if child.node is None: continue
+                    if isinstance(child.node,GateWithControl):
+                        if child.node.target != t and child.node.control != t:
+                            raise DAGIntegrityException(f"Child {child.node} of node {self.node} has qudit target not equal to that of its parent")
+                    else:
+                        if child.node.target != t:
+                            raise DAGIntegrityException(f"Child {child.node} of node {self.node} has qudit target not equal to that of its parent")
+        for child in self.children:
+            child.check_dag_integrity()
+    
     def insert_between_child(self, new_node: 'DAG', child: Optional['DAG']=None) -> None:
         """Insert a new node between this node and a child node. If the child is None, it will just be added as a regular new child,
         and it will look for ancestors that that child should be the parent of (if any)."""
@@ -126,8 +166,7 @@ class DAG:
             if desc_control is not None: # TODO: Actually figure out what needs to happen if we add a two-qudit gate.
                 new_node.add_child(desc_control)
         elif child in self.children:
-            self.children.remove(child)
-            child.parents.remove(self)
+            self.remove_child(child)
             self.add_child(new_node)
             new_node.add_child(child)
         else:
@@ -163,33 +202,8 @@ class DAG:
             raise ValueError("Both DAGs must have a node to insert before.")
         if isinstance(gate, GateWithControl):
             raise ValueError("Cannot insert a two-qudit gate before a single-qudit gate.")
-        is_two_qubit = isinstance(self.node, GateWithControl)
         ancestor = self.find_first_ancestor_on_qudit(gate.target)
         return ancestor.insert_single_qudit_gate_after(gate)
-        # new_node = DAG(gate)
-        # if is_two_qubit:
-        #     if self.node.target != gate.target and self.node.control != gate.target:
-        #         raise ValueError("Cannot insert a single-qudit gate with a different target qudit than the current gate,", self.node, gate)
-        # elif self.node.target != gate.target:
-        #     raise ValueError("Cannot insert a gate with a different target qudit,", self.node, gate)
-        # for parent in self.parents:
-        #     if parent.node.target == gate.target or (isinstance(parent.node, GateWithControl) and parent.node.control == gate.target):
-        #         parent.insert_between_child(new_node, self)
-        #         break
-        # else:
-        #     # Can only occur if the ultimate parent is the root node
-        #     parent = self.parents[0]
-        #     while parent.node is not None:
-        #         parent = parent.parents[0]
-        #     parent.add_child(new_node)
-        #     new_node.add_child(self)
-        # if is_two_qubit:
-        #     # If we had a two-qubit parent, it might now no longer be a parent of this node
-        #     for parent in self.parents:
-        #         if isinstance(parent.node, GateWithControl) and (parent.node.target == gate.target or parent.node.control == gate.target):
-        #             parent.remove_child(self)
-        #             parent.add_child(new_node)
-        # return new_node
         
     def insert_two_qudit_gate_after(self, gate: Gate) -> 'DAG':
         """Insert a new two-qudit gate after this node in the DAG.
@@ -203,7 +217,7 @@ class DAG:
             raise ValueError("Cannot insert a two-qudit gate with different target and control qudits than the current gate,", self.node, gate)
         new_node = DAG(gate)
         self.add_child(new_node)
-        for child in self.children.copy():
+        for child in self.children.copy(): # We need to copy the list, since we are changing it in-place in this loop.
             if child is new_node: continue
             self.remove_child(child)  # Remove the child from the current DAG
             new_node.add_child(child)  # Add the child to the new node
@@ -214,11 +228,11 @@ class DAG:
         """Merge another DAG instance into this one. This assumes that the other DAG is a child of this one."""
         if other in self.children:
             self.children.remove(other)
-            for child in other.children:
-                child.parents.remove(other)
+            for grandchild in other.children:
+                grandchild.parents.remove(other)
                 # We need to check whether any of our children is already an ancestor of the child, so we don't need to add it as a child to this node.
-                if any(other_child in child.ancestors for other_child in self.children if other_child is not child): continue
-                self.add_child(child)
+                if any(other_child in grandchild.ancestors for other_child in self.children if other_child is not grandchild): continue
+                self.add_child(grandchild)
             other.parents.remove(self)
             if len(other.parents) > 0: # Only possible if other is a two-qubit gate
                 # The parents of other should definitely be our parents, since other was a child
@@ -238,6 +252,40 @@ class DAG:
             self.refresh_ancestors()
         else:
             raise ValueError("Cannot merge DAGs that are not connected.")
+        
+    def remove_node(self) -> None:
+        """Removes the node from the DAG, and connects the ancestors and descendants in the appropriate way."""
+        if self.node is None:
+            raise ValueError("Cannot remove the root node of the DAG.")
+        gate = self.node
+        if not isinstance(gate, GateWithControl):
+            assert len(self.parents) == 1, "Single-qudit gate must have a unique parent"
+            self.parents[0].merge(self)
+            return
+        control, target = gate.control, gate.target
+        control_parent = self.find_first_ancestor_on_qudit(control)
+        target_parent = self.find_first_ancestor_on_qudit(target)
+        if control_parent is target_parent: # This can only happen if there is a two-qudit gate with same target and control immediately before us
+            control_parent.merge(self)
+            return
+        control_child = self.find_first_descendant_on_qudit(control)
+        target_child = self.find_first_descendant_on_qudit(target)
+        if control_child is target_child: # This can only happen if there is a two-qudit gate with same target and control immediately after us
+            self.node = control_child.node.copy()
+            self.merge(control_child)
+            return
+        # We now know we have four distinct nodes: control_parent, target_parent, control_child, target_child
+        # We can now connect them in the right way
+        if control_parent in self.parents: control_parent.remove_child(self)
+        if target_parent in self.parents: target_parent.remove_child(self)
+        if control_child in self.children: self.remove_child(control_child)
+        if target_child in self.children: self.remove_child(target_child)
+        control_parent.add_child(control_child)
+        target_parent.add_child(target_child)
+        self.children.clear()
+        self.parents.clear()
+        control_parent.refresh_ancestors()
+        target_parent.refresh_ancestors()
     
     def __repr__(self) -> str:
         return f"DAG(node={self.node}, children=[{', '.join(repr(child) for child in self.children)}])"
@@ -261,7 +309,7 @@ class CliffordSimplifier:
     def __init__(self, circuit: Circuit) -> None:
         self.circuit: Circuit = circuit.copy()
         self.dags: list[DAG] = []
-        self.steps_done: list[int] = []
+        self.steps_done: list[str] = []
         self.circuit_list: list[Circuit] = [] # Stores the intermediate steps of the simplification
         self.max_index = 1
         self.create_dag()
@@ -349,11 +397,13 @@ class CliffordSimplifier:
         self.circuit = self.topological_sort()
         self.circuit_list.append(self.circuit)
         self.steps_done.append(description)
+        self.dag.refresh_ancestors() # This is a bit of a hack, it shouldn't be needed, but I can't figure out where the issue is.
         if self.verbose:
             print(description)
             print(self.circuit)
         self.dags.append(self.dag.copy())
         if self.check_semantics_each_step:
+            self.dag.check_dag_integrity()
             mat1 = self.circuit_list[-1].to_symplectic_matrix()
             mat2 = self.circuit_list[-2].to_symplectic_matrix()
             if not symplectic.compare_matrices(mat1, mat2, self.circuit.dim):
@@ -387,6 +437,11 @@ class CliffordSimplifier:
             if self.push_S_gate(): continue
             if self.push_S_past_CX(): continue
             if self.push_CZ_past_CX(): continue
+            self.reduce_repetitions_modulo()
+            if self.transform_CX_to_SWAP(): continue
+            if self.toggle_pair_of_CX_gates(): continue
+            if self.euler_decomp2(): continue
+            if self.push_H_gate(): continue
             break  # No more progress can be made
         return loops != 1 # Whether it applied at least one optimization step
     
@@ -417,7 +472,7 @@ class CliffordSimplifier:
                 if child.node is not None and child.node.name == dag.node.name:
                     if not isinstance(dag.node, GateWithControl) or (
                         dag.node.target == child.node.target and dag.node.control == child.node.control) or (
-                            isinstance(dag.node, CZ) and dag.node.target in (child.node.target,child.node.control) 
+                            isinstance(dag.node, (CZ,SWAP)) and dag.node.target in (child.node.target,child.node.control) 
                             and dag.node.control in (child.node.target,child.node.control)):
                         dag.node.merge(child.node)  # Combines the two gates into one
                         dag.merge(child)
@@ -432,6 +487,44 @@ class CliffordSimplifier:
             success = True
         if success:
             self.update_circuit("Combine gates")
+
+        return success
+    
+    def reduce_repetitions_modulo(self) -> bool:
+        """Reduces the repetitions of gates modulo the dimension of the circuit."""
+        def try_reduce(dag: DAG) -> bool:
+            """Tries to reduce the repetitions of the current DAG node."""
+            if dag.node is not None:
+                if isinstance(dag.node, (Z,X,S,CZ,CX)):
+                    new_repetitions = dag.node.repetitions % self.circuit.dim
+                    if new_repetitions != dag.node.repetitions:
+                        dag.node.repetitions = new_repetitions
+                        # return True
+                elif isinstance(dag.node, HAD):
+                    new_repetitions = dag.node.repetitions % 4
+                    if new_repetitions != dag.node.repetitions:
+                        dag.node.repetitions = new_repetitions
+                        # return True
+                elif isinstance(dag.node, SWAP):
+                    new_repetitions = dag.node.repetitions % 2
+                    if new_repetitions != dag.node.repetitions:
+                        dag.node.repetitions = new_repetitions
+                        # return True
+                elif isinstance(dag.node, MUL):
+                    new_mult_value = dag.node.mult_value % self.circuit.dim
+                    if new_mult_value != dag.node.mult_value:
+                        dag.node.mult_value = new_mult_value
+                        # return True
+            for child in dag.children:
+                try_reduce(child)
+                # if try_reduce(child):
+                #     return True
+            return True
+        
+        success = try_reduce(self.dag)
+        
+        if success:
+            self.update_circuit("Reduce repetitions modulo")
 
         return success
     
@@ -452,7 +545,7 @@ class CliffordSimplifier:
             """Tries to remove identity gates from the current DAG node."""
             for child in dag.children:
                 if child.node is not None and is_identity(child.node):
-                    dag.merge(child)  # Remove the child node
+                    child.remove_node()  # Remove the identity gate
                     return True
                 elif try_remove_identity(child):
                     return True
@@ -634,10 +727,10 @@ class CliffordSimplifier:
         return success
     
     def euler_decomp(self) -> bool:
-        """Tries to apply the substitution H;S;H -> S^-1;H;S^-1;X in some place in the circuit."""
-
+        """Tries to apply the substitution H;S;H -> S^-1;H^3;S^-1 in some place in the circuit."""
+        # TODO: Generalise this to work with more combinations of S and 
         def try_decomp(dag: DAG) -> bool:
-            """Tries to apply the substitution H;S;H -> S^-1;H;S^-1;X in the current DAG node."""
+            """Tries to apply the substitution H;S;H -> S^-1;H^3;S^-1 in the current DAG node."""
             if dag.node is not None and isinstance(dag.node, HAD) and dag.node.repetitions % 4 == 1:
                 # It is a Hadamard so it should have at most one child
                 if len(dag.children) == 0:
@@ -657,11 +750,12 @@ class CliffordSimplifier:
                         new_s2 = S(child.node.target)
                         new_s2.repetitions = -1
                         new_h = HAD(child.node.target)
-                        new_x = X(child.node.target)
+                        new_h.repetitions = 3
+                        # new_x = X(child.node.target)
                         dag.node = new_s
                         child.node = new_h
-                        grandchild.node = new_x
-                        child.insert_between_child(DAG(new_s2), grandchild)
+                        grandchild.node = new_s # new_x
+                        # child.insert_between_child(DAG(new_s2), grandchild)
                         return True
             # If we reach here, we didn't apply the decomposition, so we try see if one of the children can push one
 
@@ -672,15 +766,16 @@ class CliffordSimplifier:
 
         success = try_decomp(self.dag)
         if success:
-            self.update_circuit("Apply Euler H;S;H -> S^-1;H;S^-1;X")
+            self.update_circuit("Apply Euler H;S;H -> S^-1;H^3;S^-1;X")
 
         return success
     
     def euler_decomp2(self) -> bool:
-        """Tries to apply the substitution S^-1;H;S^-1 -> H;S;H;X^{-1}, but only if there is a H at the start, in order to avoid a loop with euler_decomp()."""
-
+        """Tries to apply the substitution S^-1;H^3;S^-1 -> H;S;H;X^{-1}, 
+        but only if there is a H at the start, in order to avoid a loop with euler_decomp()."""
+        # TODO: Generalise this to work with more combinations of S and H
         def try_decomp(dag: DAG) -> bool:
-            """Tries to apply the substitution H;S;H -> S^-1;H;S^-1;X in the current DAG node."""
+            """Tries to apply the substitution S^-1;H^3;S^-1 -> H;S;H;X^{-1} in the current DAG node."""
             if dag.node is not None and isinstance(dag.node, S) and (dag.node.repetitions+1) % self.circuit.dim == 0: # It is S^{-1}
                 # It is an S so it should have at most one child and one parent
                 if len(dag.children) == 0:
@@ -690,7 +785,7 @@ class CliffordSimplifier:
                 assert child.node is not None, "Child node must not be None"
                 if len(dag.parents) ==0 or not isinstance(dag.parents[0].node, HAD):
                     pass
-                elif isinstance(child.node, HAD) and child.node.repetitions % 4 == 1:
+                elif isinstance(child.node, HAD) and child.node.repetitions % 4 == 3:
                     if len(child.children) == 0:
                         return False
                     assert len(child.children) == 1, "H gate should have at most one child"
@@ -772,16 +867,80 @@ class CliffordSimplifier:
                     new_cz = CZ(cx.control,cx.target)
                     new_cz.repetitions = -a*b
                     s2 = S(cx.control,repetitions=a*b**2)
-                    if b != 1: # Only need to add a Z if cx has number of repetitions not equal to 1.
-                        z = Z(cx.control,repetitions=a*b*(b+1)//2)
                     dag.node = cx  # We replace the S with the CX gate
                     dag.merge(child)  # Put the CX on the place of the original S
                     new_node = dag.insert_two_qudit_gate_after(new_cz)
                     new_node.insert_single_qudit_gate_after(s)
                     new_new_node = new_node.insert_single_qudit_gate_after(s2)
-                    if b != 1:
+                    if (b+1) % self.circuit.dim != 0: # Only need to add a Z if cx has number of repetitions not equal to -1.
+                        z = Z(cx.control,repetitions=a*b*(b+1)//2)
                         new_new_node.insert_single_qudit_gate_after(z)
                     return True
+            # If we reach here, we didn't push the S gate, so we try see if one of the children can push one
+
+            for child in dag.children:
+                if try_push(child):
+                    return True
+            return False
+        
+        success = try_push(self.dag)
+        if success:
+            self.update_circuit("Push S past CX")
+
+        return success
+    
+    def push_SH_past_CX(self) -> bool:
+        """Tries to push a combination S;H gate one step to the right past the control of a CX gate.
+        We use the following two rewrites
+        S^a(0);H^1(0);CX^b(0,1) = H(0);CX^b(0,1);H(0)^3;H(1);CZ^{-ab}(0,1);S^a(0);H^1(0);S^{ab^2}(1);H^3(1);X^{ab(b+1)/2)}(1)
+        S^a(0);H^3(0);CX^b(0,1) = H(0);CX^-b(0,1);H(0)^3;H(1);CZ^{ab}(0,1);S^a(0);H^3(0);S^{ab^2}(1);H^3(1);X^{ab(b-1)/2)}(1)
+        """
+        def try_push(dag: DAG) -> bool:
+            if dag.node is not None and isinstance(dag.node, S):
+                # It is an S so it should have at most one child
+                if len(dag.children) == 0:
+                    return False
+                assert len(dag.children) == 1
+                child = dag.children[0]
+                assert child.node is not None, "Child node must not be None"
+                if isinstance(child.node, HAD) and child.node.repetitions % 2 == 1: # Child is either H or H^3
+                    if len(child.children) == 0: return False
+                    grandchild = child.children[0] # It is a Hadamard, so it should have exactly one child.
+                    assert child.node.target == dag.node.target
+                    if isinstance(grandchild.node, CX) and grandchild.node.control == dag.node.target:
+                        s = dag.node.copy()
+                        h = child.node.copy()
+                        cx = grandchild.node
+                        is_had_adjoint = h.repetitions % 4 == 3
+                        a = s.repetitions
+                        b = cx.repetitions
+                        if is_had_adjoint: cx.repetitions *= -1
+                        new_cz = CZ(cx.control,cx.target)
+                        new_cz.repetitions = -a*b if not is_had_adjoint else a*b
+                        s2 = S(cx.target,repetitions=a*b**2)
+                        h1 = HAD(cx.target)
+                        h3 = HAD(cx.target)
+                        h3c = HAD(cx.control)
+                        h3.repetitions = 3
+                        h3c.repetitions = 3
+                        dag.node = HAD(h.target)  # We replace the S with the H gate
+                        dag.merge(child)  # Put the H on the place of the original S
+                        cz_node = grandchild.insert_two_qudit_gate_after(new_cz)
+                        grandchild.insert_single_qudit_gate_after(h3c) # These two Hadamards end up before the new CZ
+                        grandchild.insert_single_qudit_gate_after(h1)
+                        s1_node = cz_node.insert_single_qudit_gate_after(s) # These s and h end up on the control after the CZ
+                        s1_node.insert_single_qudit_gate_after(h)
+                        s2_node = cz_node.insert_single_qudit_gate_after(s2) # These s and h end up on the target after the CZ
+                        h3_node = s2_node.insert_single_qudit_gate_after(h3)
+                        if not is_had_adjoint:
+                            if (b+1) % self.circuit.dim != 0: # Only need to add a X if cx has number of repetitions not equal to -1.
+                                x = X(cx.target,repetitions=a*b*(b+1)//2)
+                                h3_node.insert_single_qudit_gate_after(x)
+                        else:
+                            if b % self.circuit.dim != 1: # Only need to add a X if cx has number of repetitions not equal to -1.
+                                x = X(cx.target,repetitions=a*b*(b-1)//2)
+                                h3_node.insert_single_qudit_gate_after(x)
+                        return True
             # If we reach here, we didn't push the S gate, so we try see if one of the children can push one
 
             for child in dag.children:
