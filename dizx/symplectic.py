@@ -27,16 +27,16 @@ def MULmat(mul, dim):
 def CXmat(rep):
     return Matrix([
                 [1  ,0,0,0],
-                [0  ,1,0,rep],
-                [-rep,0,1,0],
+                [0  ,1,0,-rep],
+                [rep,0,1,0],
                 [0  ,0,0,1]])
 
 def CZmat(rep):# TODO: check minus sign
     return Matrix([
                 [1  ,0,0  ,0],
-                [0  ,1,-rep,0],
+                [0  ,1,rep,0],
                 [0  ,0,1  ,0],
-                [-rep,0,0  ,1]])
+                [rep,0,0  ,1]])
 
 def embed_block(block, n, mapping):
     """
